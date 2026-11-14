@@ -1078,11 +1078,22 @@ export default function AdminFacilitiesPage() {
                   onChange={(event) => setSessionForm({ ...sessionForm, facilityId: event.target.value })}
                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                 >
-                  <option value="">Chọn cơ sở còn hoạt động</option>
+                  <option value="">
+                    {sessionForm.sportId
+                      ? availableFacilities.length === 0
+                        ? '-- Không có cơ sở khả dụng cho bộ môn này --'
+                        : `-- Chọn cơ sở còn hoạt động (${availableFacilities.length}) --`
+                      : '-- Vui lòng chọn bộ môn trước --'}
+                  </option>
                   {availableFacilities.map((facility) => (
                     <option key={facility.facilityId} value={facility.facilityId}>{facility.facilityName}</option>
                   ))}
                 </select>
+                {sessionForm.sportId && availableFacilities.length === 0 && (
+                  <p className="mt-1 text-xs text-rose-500 font-normal">
+                    ⚠️ Chưa có cơ sở/phòng tập nào đang ở trạng thái hoạt động cho bộ môn này.
+                  </p>
+                )}
               </label>
               <label className="block text-xs font-bold text-slate-700">
                 Huấn luyện viên
