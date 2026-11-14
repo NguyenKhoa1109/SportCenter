@@ -3,8 +3,11 @@ import { apiRequest } from './apiClient';
 export const getPendingStaffRegistrations = () =>
   apiRequest('/manager/staff-registrations');
 
-export const approveStaffRegistration = (userId) =>
-  apiRequest(`/manager/staff-registrations/${userId}/approve`, { method: 'PATCH' });
+export const approveStaffRegistration = (userId, payload) =>
+  apiRequest(`/manager/staff-registrations/${userId}/approve`, {
+    method: 'PATCH',
+    ...(payload ? { body: JSON.stringify(payload) } : {}),
+  });
 
 export const rejectStaffRegistration = (userId) =>
   apiRequest(`/manager/staff-registrations/${userId}/reject`, { method: 'PATCH' });
@@ -70,6 +73,12 @@ export const createManagerUser = (userData) =>
   apiRequest('/manager/users', {
     method: 'POST',
     body: JSON.stringify(userData),
+  });
+
+export const updateManagerCoachSports = (coachId, data) =>
+  apiRequest(`/manager/coaches/${coachId}/sports`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
   });
 
 export const getManagerClassSessions = () =>

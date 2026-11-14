@@ -995,3 +995,33 @@ IF COL_LENGTH('dbo.bookings', 'quota_state') IS NULL ALTER TABLE dbo.bookings AD
 IF COL_LENGTH('dbo.court_bookings', 'quota_state') IS NULL ALTER TABLE dbo.court_bookings ADD quota_state VARCHAR(24) NULL;
 
 IF COL_LENGTH('dbo.payment_attempts', 'merchant_date') IS NULL ALTER TABLE dbo.payment_attempts ADD merchant_date VARCHAR(14) NULL;
+
+-- Coach <-> Sport relational mapping synchronized with coach specialty backfill.
+IF OBJECT_ID(N'dbo.coach_sports', N'U') IS NULL
+   AND OBJECT_ID(N'dbo.users', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.sports', N'U') IS NOT NULL
+    CREATE TABLE dbo.coach_sports (
+        coach_id BIGINT NOT NULL,
+        sport_id BIGINT NOT NULL,
+        CONSTRAINT PK_coach_sports PRIMARY KEY (coach_id, sport_id),
+        CONSTRAINT FK_coach_sports_coach FOREIGN KEY (coach_id) REFERENCES dbo.users(user_id) ON DELETE CASCADE,
+        CONSTRAINT FK_coach_sports_sport FOREIGN KEY (sport_id) REFERENCES dbo.sports(sport_id) ON DELETE CASCADE
+    );
+
+IF OBJECT_ID(N'dbo.coach_sports', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.users', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.sports', N'U') IS NOT NULL
+    INSERT INTO dbo.coach_sports (coach_id, sport_id)
+    SELECT u.user_id, s.sport_id
+    FROM dbo.users u
+    JOIN dbo.sports s
+      ON LOWER(u.specialty) LIKE N'%' + LOWER(s.sport_name) + N'%'
+    WHERE UPPER(u.role) = 'COACH'
+      AND u.specialty IS NOT NULL
+      AND LTRIM(RTRIM(u.specialty)) <> N''
+      AND NOT EXISTS (
+          SELECT 1
+          FROM dbo.coach_sports cs
+          WHERE cs.coach_id = u.user_id
+            AND cs.sport_id = s.sport_id
+      );

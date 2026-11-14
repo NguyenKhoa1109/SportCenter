@@ -79,11 +79,13 @@ class LogicAuditRegressionTest {
         assertThrows(IllegalArgumentException.class, () -> service.resendOtp(new ResendOtpRequest("audit@example.test")));
         verifyNoInteractions(tokens, email);
     }
-    @Test void publicRegistrationIgnoresRequestedStaffRole() {
+    @Test void publicRegistrationAllowsPendingStaffAndRejectsPrivilegedRole() {
         var users = mock(UserRepository.class); when(users.save(any())).thenAnswer(i -> { User u = i.getArgument(0); u.setUserId(9L); return u; });
         var service = new AuthService(users, mock(AuthSessionRepository.class), mock(VerificationTokenRepository.class), mock(PasswordEncoder.class), mock(EmailService.class), mock(AuditLogService.class));
-        AuthResponse result = service.register(new RegisterRequest("Audit Member", "audit@example.test", "0901234567", "Audit@12345", "RECEPTIONIST"));
-        assertEquals("MEMBER", result.getRole()); assertEquals("PENDING", result.getStatus());
+        AuthResponse result = service.register(new RegisterRequest("Audit Staff", "audit@example.test", "0901234567", "Audit@12345", "RECEPTIONIST"));
+        assertEquals("RECEPTIONIST", result.getRole()); assertEquals("PENDING", result.getStatus());
+        assertThrows(IllegalArgumentException.class, () ->
+                service.register(new RegisterRequest("Audit Admin", "admin@example.test", "0901234568", "Audit@12345", "ADMIN")));
     }
     @Test void wrongRegistrationOtpCommitsItsAttemptCountThroughSpringTransactionProxy() {
         var users = mock(UserRepository.class); var tokens = mock(VerificationTokenRepository.class);

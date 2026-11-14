@@ -15,6 +15,7 @@ import com.sporthub.backend.repository.FacilityRepository;
 import com.sporthub.backend.repository.SportRepository;
 import com.sporthub.backend.repository.UserRepository;
 import com.sporthub.backend.service.EngagementService;
+import com.sporthub.backend.util.CoachSportHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.security.core.Authentication;
@@ -150,11 +151,12 @@ public class FacilityManagementController {
         if (!facility.getSportId().equals(request.sportId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Môn thể thao không phù hợp với cơ sở.");
         }
-        sportRepository.findById(request.sportId())
+        Sport sport = sportRepository.findById(request.sportId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Môn thể thao không tồn tại."));
         User coach = userRepository.findById(request.coachId())
                 .filter(user -> "COACH".equalsIgnoreCase(user.getRole()))
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Huấn luyện viên không tồn tại."));
+        CoachSportHelper.requireCoachTeachesSport(coach, sport);
         if (!"AVAILABLE".equalsIgnoreCase(facility.getStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cơ sở đang bảo trì.");
         }
@@ -247,18 +249,30 @@ public class FacilityManagementController {
         ClassSession session = classSessionRepository.findById(sessionId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy ca học."));
 
+        Sport sessionSport = session.getSportId() == null
+                ? null
+                : sportRepository.findById(session.getSportId())
+                        .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Môn thể thao không tồn tại."));
+
         if (request.className() != null && !request.className().isBlank()) {
             session.setClassName(request.className().trim());
         }
         if (request.coachId() != null) {
-            userRepository.findById(request.coachId())
+            if (sessionSport == null) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ca học chưa gắn bộ môn hợp lệ.");
+            }
+            User coach = userRepository.findById(request.coachId())
                     .filter(u -> "COACH".equalsIgnoreCase(u.getRole()))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Huấn luyện viên không hợp lệ."));
+            CoachSportHelper.requireCoachTeachesSport(coach, sessionSport);
             session.setCoachId(request.coachId());
         }
         if (request.facilityId() != null) {
-            facilityRepository.findById(request.facilityId())
+            Facility targetFacility = facilityRepository.findById(request.facilityId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cơ sở không hợp lệ."));
+            if (session.getSportId() != null && !Objects.equals(targetFacility.getSportId(), session.getSportId())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cơ sở được chọn không phù hợp với bộ môn của ca học.");
+            }
             session.setFacilityId(request.facilityId());
         }
         if (request.startTime() != null && request.endTime() != null) {

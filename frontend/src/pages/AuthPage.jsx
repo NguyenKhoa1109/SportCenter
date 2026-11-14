@@ -10,6 +10,26 @@ const ROLE_HOME_PATHS = {
   coach: '/coach',
   admin: '/admin',
 };
+const REGISTRATION_ROLES = [
+  {
+    value: 'MEMBER',
+    label: 'Hội viên',
+    hint: 'Xác thực OTP email',
+    icon: 'person',
+  },
+  {
+    value: 'COACH',
+    label: 'Huấn luyện viên',
+    hint: 'Chờ Quản lý duyệt',
+    icon: 'sports',
+  },
+  {
+    value: 'RECEPTIONIST',
+    label: 'Lễ tân',
+    hint: 'Chờ Quản lý duyệt',
+    icon: 'support_agent',
+  },
+];
 
 export default function AuthPage() {
   const location = useLocation();
@@ -40,14 +60,23 @@ export default function AuthPage() {
   const [loginIdentifier, setLoginIdentifier] = useState('');
   const [loginPassword, setLoginPassword] = useState('');
 
-  // Register form state (chỉ hỗ trợ tự đăng ký tài khoản MEMBER)
+  // Register form state (hỗ trợ MEMBER tự xác thực OTP và COACH/RECEPTIONIST chờ Quản lý phê duyệt)
   const [regForm, setRegForm] = useState({
     fullName: '',
     phone: '',
     email: '',
     password: '',
+    role: 'MEMBER',
     agreeTerms: true,
   });
+
+  const handleRoleSelect = (roleValue) => {
+    setAuthError('');
+    setRegForm((prev) => ({
+      ...prev,
+      role: roleValue,
+    }));
+  };
 
   // OTP Verification Modal State
   const [otpModal, setOtpModal] = useState({
@@ -200,14 +229,34 @@ export default function AuthPage() {
           phone: regForm.phone.trim(),
           email: regForm.email.trim(),
           password: regForm.password,
-          role: 'MEMBER',
+          role: regForm.role,
         }),
       });
       if (!response.ok) {
         throw new Error(await getErrorMessage(response));
       }
       const user = await response.json();
-      // Điều hướng trực tiếp sang trang OTP Screen theo yêu cầu của team backend
+      const registeredRole = (user.role || regForm.role || 'MEMBER').toUpperCase();
+      if (regForm.role !== 'MEMBER' && registeredRole === 'MEMBER') {
+        throw new Error('Máy chủ chưa ghi nhận đúng vai trò nhân sự. Vui lòng thử lại sau.');
+      }
+      if (registeredRole !== 'MEMBER') {
+        setRegForm({
+          fullName: '',
+          phone: '',
+          email: '',
+          password: '',
+          role: 'MEMBER',
+          agreeTerms: true,
+        });
+        setAuthNotice(
+          user.message ||
+            'Đăng ký tài khoản nhân sự thành công. Tài khoản của bạn đang chờ Quản lý phê duyệt trước khi đăng nhập.',
+        );
+        setActiveTab('login', true);
+        return;
+      }
+      // Điều hướng trực tiếp sang trang OTP Screen đối với Hội viên
       navigate('/verify-otp', {
         state: {
           email: regForm.email.trim(),
@@ -587,6 +636,45 @@ export default function AuthPage() {
                         </span>
                       </div>
 
+                      {/* Vai trò đăng ký */}
+                      <div className="flex flex-col gap-1.5">
+                        <label className="text-xs uppercase tracking-wider text-slate-700 font-extrabold">
+                          Vai trò tài khoản *
+                        </label>
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                          {REGISTRATION_ROLES.map((item) => {
+                            const selected = regForm.role === item.value;
+                            return (
+                              <button
+                                key={item.value}
+                                type="button"
+                                aria-pressed={selected}
+                                onClick={() => handleRoleSelect(item.value)}
+                                className={`flex flex-col items-start gap-0.5 rounded-xl border px-3 py-2.5 text-left transition-all cursor-pointer ${
+                                  selected
+                                    ? 'border-orange-500 bg-orange-50/90 text-orange-950 ring-1 ring-orange-500 shadow-2xs'
+                                    : 'border-slate-200 bg-white text-slate-700 hover:border-slate-300 hover:bg-slate-50'
+                                }`}
+                              >
+                                <span className="flex items-center gap-1.5 text-xs font-extrabold">
+                                  <span
+                                    className={`material-symbols-outlined text-[16px] ${
+                                      selected ? 'text-orange-600' : 'text-slate-400'
+                                    }`}
+                                  >
+                                    {item.icon}
+                                  </span>
+                                  {item.label}
+                                </span>
+                                <span className="text-[11px] font-medium text-slate-500">
+                                  {item.hint}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
                         {/* Họ và tên */}
                         <div className="flex flex-col gap-1">
@@ -696,6 +784,14 @@ export default function AuthPage() {
                           Mật khẩu cần tối thiểu 8 ký tự.
                         </span>
                       </div>
+
+                      {regForm.role !== 'MEMBER' && (
+                        <p className="rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                          {regForm.role === 'COACH'
+                            ? 'Tài khoản Huấn luyện viên sẽ chờ Quản lý phê duyệt và phân công bộ môn giảng dạy trước khi đăng nhập.'
+                            : 'Tài khoản Lễ tân sẽ chờ Quản lý phê duyệt trước khi đăng nhập.'}
+                        </p>
+                      )}
                     </div>
 
                     {/* Agree Terms Checkbox */}

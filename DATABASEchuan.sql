@@ -145,6 +145,18 @@ CREATE TABLE dbo.public_sports (
 );
 GO
 
+DROP TABLE IF EXISTS dbo.coach_sports;
+GO
+
+CREATE TABLE dbo.coach_sports (
+    coach_id  BIGINT NOT NULL,
+    sport_id  BIGINT NOT NULL,
+    CONSTRAINT PK_coach_sports PRIMARY KEY (coach_id, sport_id),
+    CONSTRAINT FK_coach_sports_coach FOREIGN KEY (coach_id) REFERENCES dbo.users(user_id) ON DELETE CASCADE,
+    CONSTRAINT FK_coach_sports_sport FOREIGN KEY (sport_id) REFERENCES dbo.sports(sport_id) ON DELETE CASCADE
+);
+GO
+
 -- 1.5 Facilities, Public Facilities & Sports Courts (Canonical IDs aligned with FacilityCourtSyncService)
 CREATE TABLE dbo.facilities (
     facility_id    BIGINT IDENTITY(1,1) NOT NULL CONSTRAINT PK_facilities PRIMARY KEY,
@@ -682,6 +694,18 @@ INSERT INTO dbo.public_sports (sport_id, slug, name, subtitle, tag, description,
     (9,  N'swimming',     N'Bơi lội',           N'Hồ bơi',                  N'Thể thao dưới nước',N'Bộ môn bơi lội dành cho luyện tập thể lực và cải thiện kỹ thuật bơi.',                             N'pool',             N'Hồ bơi',           1),
     (10, N'athletics',    N'Điền kinh',         N'Đường chạy điền kinh',    N'Rèn thể lực',       N'Bộ môn điền kinh gồm các hoạt động chạy bộ và rèn luyện sức bền.',                                 N'directions_run',   N'Đường chạy',       1);
 SET IDENTITY_INSERT dbo.public_sports OFF;
+
+INSERT INTO dbo.coach_sports (coach_id, sport_id) VALUES
+    -- Coach 5 (Trần Văn Minh): Pickleball (2), Tennis (3), Bóng bàn (8)
+    (5, 2), (5, 3), (5, 8),
+    -- Coach 6 (Nguyễn Hoàng Nam): Pickleball (2), Bóng chuyền (7), Bơi lội (9)
+    (6, 2), (6, 7), (6, 9),
+    -- Coach 7 (Võ Tấn Phát): Bóng đá (5), Điền kinh (10)
+    (7, 5), (7, 10),
+    -- Coach 8 (Đặng Thu Thảo): Yoga & Pilates (4), Cầu lông (6)
+    (8, 4), (8, 6),
+    -- Coach 15 (Trương Quốc Bảo, PENDING): Gym & Fitness (1), Cầu lông (6)
+    (15, 1), (15, 6);
 
 -- ----------------------------------------------------------------------------
 -- 2.3 Facilities, Public Facilities & Sports Courts (Canonical IDs matching FacilityCourtSyncService)

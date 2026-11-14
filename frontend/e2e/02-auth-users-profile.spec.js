@@ -31,11 +31,12 @@ test.describe('SUITE 2: Xác Thực, Phân Quyền Người Dùng & Hồ Sơ Cá
     const staffName = `HLV Kiểm Thử ${timestamp.toString().slice(-4)}`;
 
     try {
-      // 1. Trang tự đăng ký chỉ cho phép Hội viên (không còn nút chọn Huấn luyện viên / Lễ tân)
+      // 1. Trang tự đăng ký hiển thị 3 vai trò: Hội viên, Huấn luyện viên, Lễ tân
       await registerPage.goto('/register');
       await expect(registerPage.getByRole('heading', { name: /Chào Mừng Đến Với F Sport/i })).toBeVisible({ timeout: 7000 });
-      await expect(registerPage.getByRole('button', { name: 'Huấn luyện viên' })).toHaveCount(0);
-      await expect(registerPage.getByRole('button', { name: 'Lễ tân' })).toHaveCount(0);
+      await expect(registerPage.getByRole('button', { name: /Hội viên/i })).toBeVisible();
+      await expect(registerPage.getByRole('button', { name: /Huấn luyện viên/i })).toBeVisible();
+      await expect(registerPage.getByRole('button', { name: /Lễ tân/i })).toBeVisible();
 
       // 2. Admin/Manager vào /admin/staff tạo tài khoản COACH trực tiếp
       await loginManager(adminPage);

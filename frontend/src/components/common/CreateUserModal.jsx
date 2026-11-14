@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { useApp } from '../../context/AppContext';
-import { createManagerUser } from '../../services/managerApi';
-import { createReceptionistUser } from '../../services/receptionistApi';
+import { createManagerUser, getManagerDomainSports } from '../../services/managerApi';
+import { createReceptionistUser, getReceptionistDomainSports } from '../../services/receptionistApi';
+import CoachSportSelector from './CoachSportSelector';
 
 export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
   const { currentUser, currentRole, showToast } = useApp();
@@ -19,6 +20,28 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [sports, setSports] = useState([]);
+  const [sportsLoading, setSportsLoading] = useState(false);
+  const [selectedSportIds, setSelectedSportIds] = useState([]);
+
+  const handleRoleChange = async (nextRole) => {
+    setRole(nextRole);
+    if (nextRole !== 'COACH') {
+      setSelectedSportIds([]);
+      return;
+    }
+    if (sports.length > 0 || sportsLoading) return;
+    setSportsLoading(true);
+    try {
+      const fetcher = currentRole === 'receptionist' ? getReceptionistDomainSports : getManagerDomainSports;
+      const rows = await fetcher();
+      setSports(Array.isArray(rows) ? rows : []);
+    } catch {
+      setSports([]);
+    } finally {
+      setSportsLoading(false);
+    }
+  };
 
   // Optional fields per specification (Section 2.1 - B. Thông tin bổ sung)
   const [showOptionalFields, setShowOptionalFields] = useState(false);
@@ -43,6 +66,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
     setRfidCode('');
     setEmergencyContactName('');
     setEmergencyContactPhone('');
+    setSelectedSportIds([]);
     setError('');
   };
 
@@ -67,6 +91,11 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
       return;
     }
 
+    if (role === 'COACH' && selectedSportIds.length === 0) {
+      setError('Vui lòng chọn ít nhất một bộ môn giảng dạy cho Huấn luyện viên.');
+      return;
+    }
+
     setSubmitting(true);
     try {
       const payload = {
@@ -75,6 +104,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
         email: email.trim(),
         password,
         role,
+        sportIds: role === 'COACH' ? selectedSportIds.map(Number) : null,
         dateOfBirth: dateOfBirth || null,
         gender: gender || null,
         address: address.trim() || null,
@@ -129,7 +159,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
           {error && (
             <div role="alert" className="p-3 rounded-xl border border-red-200 bg-red-50 text-xs font-bold text-red-700">
               {error}
@@ -148,7 +178,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
               <select
                 id="create-user-role"
                 value={role}
-                onChange={(e) => setRole(e.target.value)}
+                onChange={(e) => handleRoleChange(e.target.value)}
                 className="w-full bg-white text-slate-900 px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-2xs appearance-none cursor-pointer"
               >
                 <option value="MEMBER">Khách hàng / Hội viên (MEMBER)</option>
@@ -166,6 +196,15 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
               </span>
             </div>
           </div>
+
+          {role === 'COACH' && (
+            <CoachSportSelector
+              sports={sports}
+              selectedIds={selectedSportIds}
+              onChange={setSelectedSportIds}
+              loading={sportsLoading}
+            />
+          )}
 
           {/* Họ và tên */}
           <div className="flex flex-col gap-1">

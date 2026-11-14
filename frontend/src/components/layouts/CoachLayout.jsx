@@ -8,13 +8,63 @@ export default function CoachLayout({ children }) {
   const { currentUser } = useApp();
 
   const coachMenu = [
-    { label: 'Tổng quan', path: '/coach', icon: 'dashboard' },
-    { label: 'Lịch giảng dạy tuần', path: '/coach/schedule', icon: 'calendar_month' },
-    { label: 'Học viên của tôi', path: '/coach/students', icon: 'groups' },
-    { label: 'Điểm danh & Nhận xét', path: '/coach/attendance', icon: 'fact_check' },
-    { label: 'Đánh giá từ học viên', path: '/coach/reviews', icon: 'star' },
-    { label: 'Thông báo lịch dạy', path: '/coach/notifications', icon: 'notifications' },
-    { label: 'Hồ sơ & Thẻ HLV', path: '/coach/profile', icon: 'badge' },
+    {
+      label: 'Tổng quan',
+      path: '/coach',
+      icon: 'dashboard',
+      section: 'Giảng dạy & Lớp học',
+      mobilePin: true,
+      mobileLabel: 'Tổng quan',
+      subtitle: 'Bảng điều khiển HLV, ca dạy hôm nay và hiệu suất',
+    },
+    {
+      label: 'Lịch giảng dạy tuần',
+      path: '/coach/schedule',
+      icon: 'calendar_month',
+      section: 'Giảng dạy & Lớp học',
+      mobilePin: true,
+      mobileLabel: 'Lịch dạy',
+      subtitle: 'Lịch ca dạy, phòng tập, số lượng học viên',
+    },
+    {
+      label: 'Điểm danh & Nhận xét',
+      path: '/coach/attendance',
+      icon: 'fact_check',
+      section: 'Giảng dạy & Lớp học',
+      mobilePin: true,
+      mobileLabel: 'Điểm danh',
+      subtitle: 'Ghi nhận chuyên cần, gửi bài tập về nhà',
+    },
+    {
+      label: 'Học viên của tôi',
+      path: '/coach/students',
+      icon: 'groups',
+      section: 'Giảng dạy & Lớp học',
+      mobilePin: true,
+      mobileLabel: 'Học viên',
+      subtitle: 'Hồ sơ học viên, mục tiêu thể chất PAR-Q',
+    },
+    {
+      label: 'Đánh giá từ học viên',
+      path: '/coach/reviews',
+      icon: 'star',
+      section: 'Phản hồi & Hồ sơ',
+      subtitle: 'Xem nhận xét và xếp hạng từ học viên',
+    },
+    {
+      label: 'Thông báo lịch dạy',
+      path: '/coach/notifications',
+      icon: 'notifications',
+      section: 'Phản hồi & Hồ sơ',
+      subtitle: 'Cập nhật lịch dạy, đăng ký mới và nhắc nhở',
+    },
+    {
+      label: 'Hồ sơ & Thẻ HLV',
+      path: '/coach/profile',
+      icon: 'badge',
+      section: 'Phản hồi & Hồ sơ',
+      subtitle: 'Thông tin cá nhân, thẻ số HLV, chuyên môn và bằng cấp',
+    },
   ];
 
   return (
