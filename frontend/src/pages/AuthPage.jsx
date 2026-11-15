@@ -340,7 +340,7 @@ export default function AuthPage() {
                 </span>
                 <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span>
                 <span className="text-[11px] text-orange-400 font-bold tracking-wider">
-                  HÀ NỘI • SAIGON
+                  HÀ NỘI • SÀI GÒN
                 </span>
               </div>
             </div>
@@ -410,7 +410,7 @@ export default function AuthPage() {
                     50 HLV
                   </span>
                   <span className="text-[10px] text-slate-600 uppercase tracking-wider mt-0.5 font-bold">
-                    Master Trainer Pro
+                    HLV Chuyên nghiệp
                   </span>
                 </div>
               </div>
@@ -419,10 +419,10 @@ export default function AuthPage() {
             {/* Micro Footer */}
             <div className="relative z-10 flex items-center justify-between text-slate-300 text-xs">
               <span className="text-[10px] tracking-wider uppercase text-white/80 font-bold">
-                © 2026 F SPORT CENTER • ALL RIGHTS RESERVED
+                © 2026 F SPORT CENTER • BẢN QUYỀN ĐƯỢC BẢO LƯU
               </span>
               <span className="text-[10px] tracking-widest text-orange-400 font-black flex items-center gap-1.5 drop-shadow-sm uppercase">
-                <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span> LIVE SYSTEM READY
+                <span className="w-1.5 h-1.5 rounded-full bg-orange-400"></span> HỆ THỐNG SẴN SÀNG
               </span>
             </div>
           </div>
