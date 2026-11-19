@@ -62,7 +62,7 @@ export default function ReceptionistLayout({ children }) {
     },
     {
       label: 'Hỗ trợ & Khiếu nại',
-      path: '/reception/tickets',
+      path: '/receptionist/tickets',
       icon: 'support_agent',
       section: 'Hội viên & Vận hành ca',
       subtitle: 'Tiếp nhận, tạo mới và xử lý ticket khiếu nại hội viên',

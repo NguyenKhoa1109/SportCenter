@@ -122,9 +122,10 @@ function App() {
           <Route path="/member/book/coaches/:sportId" element={<RequireRole role="member"><MemberBookingFlowPage /></RequireRole>} />
           <Route path="/member/book/checkout/:bookingType/:resourceId" element={<RequireRole role="member"><MemberBookingFlowPage /></RequireRole>} />
           <Route path="/member/book/confirmation" element={<RequireRole role="member"><MemberBookingFlowPage /></RequireRole>} />
-          <Route path="/member/schedule" element={<RequireRole roles={['member', 'coach']}><MemberSchedulePage /></RequireRole>} />
+          <Route path="/member/schedule" element={<RequireRole role="member"><MemberSchedulePage /></RequireRole>} />
           <Route path="/member/attendance" element={<RequireRole role="member"><MemberAttendancePage /></RequireRole>} />
           <Route path="/member/workout-plans" element={<RequireRole role="member"><MemberWorkoutPlansPage /></RequireRole>} />
+          <Route path="/member/workouts" element={<Navigate to="/member/workout-plans" replace />} />
           <Route path="/member/notifications" element={<RequireRole role="member"><MemberNotificationsPage /></RequireRole>} />
           <Route path="/member/transactions" element={<RequireRole role="member"><MemberTransactionsPage /></RequireRole>} />
           <Route path="/member/ai-assistant" element={<RequireRole role="member"><MemberAIAssistantPage /></RequireRole>} />
@@ -143,6 +144,15 @@ function App() {
           <Route path="/receptionist/profile" element={<RequireRole role="receptionist"><ReceptionProfilePage /></RequireRole>} />
           <Route path="/reception/tickets" element={<RequireRole role="receptionist"><ReceptionTicketsPage /></RequireRole>} />
           <Route path="/receptionist/tickets" element={<RequireRole role="receptionist"><ReceptionTicketsPage /></RequireRole>} />
+          <Route path="/reception" element={<Navigate to="/receptionist" replace />} />
+          <Route path="/reception/checkin" element={<Navigate to="/receptionist/checkin" replace />} />
+          <Route path="/reception/check-in" element={<Navigate to="/receptionist/checkin" replace />} />
+          <Route path="/reception/pos" element={<Navigate to="/receptionist/pos" replace />} />
+          <Route path="/reception/equipment" element={<Navigate to="/receptionist/equipment" replace />} />
+          <Route path="/reception/members" element={<Navigate to="/receptionist/members" replace />} />
+          <Route path="/reception/classes" element={<Navigate to="/receptionist/classes" replace />} />
+          <Route path="/reception/shift" element={<Navigate to="/receptionist/shift" replace />} />
+          <Route path="/reception/profile" element={<Navigate to="/receptionist/profile" replace />} />
 
           {/* Coach Routes */}
           <Route path="/coach" element={<RequireRole role="coach"><CoachDashboardPage /></RequireRole>} />

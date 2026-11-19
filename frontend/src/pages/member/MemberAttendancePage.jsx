@@ -71,9 +71,13 @@ export default function MemberAttendancePage() {
         description: `${prefix}${reason}`,
         severity: 'NORMAL',
       });
-      if (created) {
-        setTickets((prev) => [created, ...prev]);
+      const latestTickets = await getMemberTickets().catch(() => null);
+      if (Array.isArray(latestTickets)) {
+        setTickets(latestTickets);
+      } else if (created) {
+        setTickets((prev) => [created, ...prev.filter((t) => t.ticketId !== created.ticketId)]);
       }
+      setActiveTab('tickets');
       setIsDisputeModalOpen(false);
       window.dispatchEvent(new Event('sporthub:notifications-updated'));
       showToast(
