@@ -19,6 +19,7 @@ import {
 } from '../../services/engagementApi';
 import { apiRequest } from '../../services/apiClient';
 import { useApp } from '../../context/AppContext';
+import { coachTeachesSport } from '../../utils/coachSport';
 
 const emptySession = {
   className: '',
@@ -112,8 +113,12 @@ export default function AdminFacilitiesPage() {
 
   const handleOpenEditSession = (session) => {
     setSelectedSession(session);
+    const currentCoach = coaches.find((c) => String(c.userId) === String(session.coachId));
+    const matchedSport = sports.find((s) => String(s.sportId) === String(session.sportId));
+    const sportName = session.sportName || matchedSport?.sportName || matchedSport?.name || '';
+    const isCurrentCoachValid = !currentCoach || !session.sportId || coachTeachesSport(currentCoach, session.sportId, sportName);
     setEditSessionForm({
-      coachId: session.coachId ? String(session.coachId) : '',
+      coachId: session.coachId && isCurrentCoachValid ? String(session.coachId) : '',
       facilityId: session.facilityId ? String(session.facilityId) : '',
       startTime: session.startTime ? session.startTime.slice(0, 16) : '',
       endTime: session.endTime ? session.endTime.slice(0, 16) : '',
@@ -212,6 +217,26 @@ export default function AdminFacilitiesPage() {
       (!sessionForm.sportId || String(facility.sportId) === sessionForm.sportId),
   );
 
+  const selectedCreateSport = sports.find((s) => String(s.sportId) === String(sessionForm.sportId));
+  const eligibleCreateCoaches = useMemo(() => {
+    if (!sessionForm.sportId) return [];
+    const sportName = selectedCreateSport?.sportName || selectedCreateSport?.name || '';
+    return coaches.filter((coach) => coachTeachesSport(coach, sessionForm.sportId, sportName));
+  }, [coaches, sessionForm.sportId, selectedCreateSport]);
+
+  const editSportId = selectedSession?.sportId;
+  const editSport = sports.find((s) => String(s.sportId) === String(editSportId));
+  const editSportName = selectedSession?.sportName || editSport?.sportName || editSport?.name || '';
+  const eligibleEditCoaches = useMemo(() => {
+    if (!editSportId) return coaches;
+    return coaches.filter((coach) => coachTeachesSport(coach, editSportId, editSportName));
+  }, [coaches, editSportId, editSportName]);
+
+  const eligibleEditFacilities = useMemo(() => {
+    if (!editSportId) return facilities;
+    return facilities.filter((f) => String(f.sportId) === String(editSportId));
+  }, [facilities, editSportId]);
+
   const groupedFacilities = useMemo(() => {
     const groupsMap = new Map();
 
@@ -280,10 +305,13 @@ export default function AdminFacilitiesPage() {
       });
       setShowAddClassModal(false);
       setSessionForm(emptySession);
+      await loadClassSessions();
       setSuccess(`Đã tạo ${createdSessions.length} buổi học, lặp hàng tuần theo thứ và giờ đã chọn.`);
       showToast('Thành công', `Đã tạo ${createdSessions.length} ca học thành công.`, 'success');
     } catch (requestError) {
-      setError(requestError.message || 'Không thể tạo lịch lớp.');
+      const msg = requestError.message || 'Không thể tạo lịch lớp.';
+      setError(msg);
+      showToast('Lỗi tạo lịch lớp', msg, 'danger');
     } finally {
       setSaving(false);
     }
@@ -1055,11 +1083,23 @@ export default function AdminFacilitiesPage() {
                 <select
                   required
                   value={sessionForm.sportId}
-                  onChange={(event) => setSessionForm({
-                    ...sessionForm,
-                    sportId: event.target.value,
-                    facilityId: '',
-                  })}
+                  onChange={(event) => {
+                    const nextSportId = event.target.value;
+                    const nextSport = sports.find((s) => String(s.sportId) === String(nextSportId));
+                    const keepCoach = nextSportId && sessionForm.coachId
+                      ? coaches.some(
+                          (coach) =>
+                            String(coach.userId) === String(sessionForm.coachId) &&
+                            coachTeachesSport(coach, nextSportId, nextSport?.sportName || nextSport?.name || ''),
+                        )
+                      : false;
+                    setSessionForm({
+                      ...sessionForm,
+                      sportId: nextSportId,
+                      facilityId: '',
+                      coachId: keepCoach ? sessionForm.coachId : '',
+                    });
+                  }}
                   className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
                 >
                   <option value="">Chọn bộ môn</option>
@@ -1099,13 +1139,29 @@ export default function AdminFacilitiesPage() {
                 Huấn luyện viên
                 <select
                   required
+                  disabled={!sessionForm.sportId || eligibleCreateCoaches.length === 0}
                   value={sessionForm.coachId}
                   onChange={(event) => setSessionForm({ ...sessionForm, coachId: event.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
+                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
                 >
-                  <option value="">Chọn huấn luyện viên</option>
-                  {coaches.map((coach) => <option key={coach.userId} value={coach.userId}>{coach.fullName}</option>)}
+                  <option value="">
+                    {!sessionForm.sportId
+                      ? 'Vui lòng chọn bộ môn trước'
+                      : eligibleCreateCoaches.length === 0
+                        ? 'Chưa có HLV phù hợp cho bộ môn này'
+                        : 'Chọn huấn luyện viên'}
+                  </option>
+                  {eligibleCreateCoaches.map((coach) => (
+                    <option key={coach.userId} value={coach.userId}>
+                      {coach.fullName}{coach.specialty ? ` (${coach.specialty})` : ''}
+                    </option>
+                  ))}
                 </select>
+                {sessionForm.sportId && eligibleCreateCoaches.length === 0 && (
+                  <p className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                    Chưa có HLV nào dạy bộ môn {selectedCreateSport?.sportName || selectedCreateSport?.name}. Vui lòng gán bộ môn cho HLV trong mục Nhân sự &amp; Khách.
+                  </p>
+                )}
               </label>
               <div className="grid grid-cols-2 gap-3">
                 <label className="text-xs font-bold text-slate-700">
@@ -1162,7 +1218,10 @@ export default function AdminFacilitiesPage() {
                   </span>
                   <div>
                     <h3 className="text-base font-bold text-slate-900">Dời Giờ / Đổi HLV Ca Học</h3>
-                    <p className="text-xs text-slate-500 font-mono">SES-{selectedSession.sessionId}: {selectedSession.className}</p>
+                    <p className="text-xs text-slate-500 font-mono">
+                      SES-{selectedSession.sessionId}: {selectedSession.className}
+                      {editSportName ? ` · Bộ môn: ${editSportName}` : ''}
+                    </p>
                   </div>
                 </div>
                 <button
@@ -1203,20 +1262,32 @@ export default function AdminFacilitiesPage() {
                 </div>
 
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-bold uppercase text-slate-700">Huấn luyện viên phụ trách *</label>
+                  <label className="text-xs font-bold uppercase text-slate-700">
+                    Huấn luyện viên phụ trách ({editSportName || 'theo bộ môn'}) *
+                  </label>
                   <select
                     required
+                    disabled={eligibleEditCoaches.length === 0}
                     value={editSessionForm.coachId}
                     onChange={(e) => setEditSessionForm({ ...editSessionForm, coachId: e.target.value })}
-                    className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs font-bold text-slate-800 outline-none focus:border-orange-500"
+                    className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs font-bold text-slate-800 outline-none focus:border-orange-500 disabled:bg-slate-100 disabled:text-slate-400"
                   >
-                    <option value="">-- Chọn HLV phụ trách --</option>
-                    {coaches.map((c) => (
+                    <option value="">
+                      {eligibleEditCoaches.length === 0
+                        ? 'Chưa có HLV phù hợp cho bộ môn này'
+                        : '-- Chọn HLV phụ trách --'}
+                    </option>
+                    {eligibleEditCoaches.map((c) => (
                       <option key={c.userId} value={c.userId}>
-                        {c.fullName} ({c.email})
+                        {c.fullName}{c.specialty ? ` · ${c.specialty}` : ''}
                       </option>
                     ))}
                   </select>
+                  {eligibleEditCoaches.length === 0 && (
+                    <p className="mt-1 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
+                      Chưa có HLV nào dạy bộ môn {editSportName}. Vui lòng gán bộ môn cho HLV trong mục Nhân sự &amp; Khách.
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-1">
@@ -1228,7 +1299,7 @@ export default function AdminFacilitiesPage() {
                     className="w-full rounded-xl border border-slate-300 bg-white p-2.5 text-xs font-bold text-slate-800 outline-none focus:border-orange-500"
                   >
                     <option value="">-- Chọn sân bãi --</option>
-                    {facilities.map((f) => (
+                    {eligibleEditFacilities.map((f) => (
                       <option key={f.facilityId} value={f.facilityId}>
                         {f.facilityName} ({f.sportName || 'Đa năng'})
                       </option>

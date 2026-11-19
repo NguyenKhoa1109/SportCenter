@@ -2,8 +2,10 @@ package com.sporthub.backend.controller;
 
 import com.sporthub.backend.entity.User;
 import com.sporthub.backend.entity.MembershipPackage;
+import com.sporthub.backend.entity.Sport;
 import com.sporthub.backend.repository.MembershipPackageRepository;
 import com.sporthub.backend.repository.PublicSportRepository;
+import com.sporthub.backend.repository.SportRepository;
 import com.sporthub.backend.repository.UserRepository;
 import com.sporthub.backend.service.AuditLogService;
 import com.sporthub.backend.service.EmailService;
@@ -13,10 +15,13 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
+import java.util.stream.Collectors;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -162,13 +167,21 @@ class ManagerControllerTest {
     @Test
     void managerCanApprovePendingCoach() {
         User pending = pendingUser("COACH");
+        pending.setSpecialty("Bơi lội, Yoga");
+        when(userRepository.findPendingStaffRegistrations(List.of("COACH", "RECEPTIONIST")))
+                .thenReturn(List.of(pending));
         when(userRepository.findById(7L)).thenReturn(Optional.of(pending));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        var pendingList = controller.getPendingRegistrations(manager);
+        assertEquals(1, pendingList.size());
+        assertEquals("Bơi lội, Yoga", pendingList.get(0).specialty());
 
         var result = controller.approveRegistration(7L, manager);
 
         assertEquals("ACTIVE", pending.getStatus());
         assertEquals("COACH", result.role());
+        assertEquals("Bơi lội, Yoga", result.specialty());
         verify(userRepository).save(pending);
     }
 
@@ -195,18 +208,29 @@ class ManagerControllerTest {
 
     @Test
     void managerCanCreateAnyRoleUser() {
-        com.sporthub.backend.dto.CreateUserRequest request = new com.sporthub.backend.dto.CreateUserRequest(
-                "Trần Quản Lý Mới", "manager.new@example.com", "0911222333", "SportHub@123", "MANAGER");
-        when(userRepository.existsByEmailIgnoreCase("manager.new@example.com")).thenReturn(false);
+        var adminAuth = new UsernamePasswordAuthenticationToken(
+                "10", "", List.of(new SimpleGrantedAuthority("ROLE_ADMIN")));
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User u = invocation.getArgument(0);
             u.setUserId(99L);
             return u;
         });
 
-        var res = controller.createUser(request, manager);
-        assertEquals("MANAGER", res.role());
-        assertEquals("ACTIVE", res.status());
+        for (String role : List.of("MEMBER", "COACH", "RECEPTIONIST", "MANAGER", "ADMIN")) {
+            String email = role.toLowerCase() + ".new@example.com";
+            when(authService.findUserByEmail(email)).thenReturn(Optional.empty());
+            var req = new com.sporthub.backend.dto.CreateUserRequest(
+                    "User " + role, email, "0911222333", "SportHub@123", role.toLowerCase());
+
+            var actor = "ADMIN".equals(role) ? adminAuth : manager;
+            var res = controller.createUser(req, actor);
+            assertEquals(role, res.role());
+            assertEquals("ACTIVE", res.status());
+        }
+
+        var invalidReq = new com.sporthub.backend.dto.CreateUserRequest(
+                "Invalid Role", "invalid@example.com", "0911222334", "SportHub@123", "OWNER");
+        assertThrows(ResponseStatusException.class, () -> controller.createUser(invalidReq, manager));
     }
 
     @Test
@@ -235,6 +259,81 @@ class ManagerControllerTest {
         var res = controller.createUser(request, receptionistAuth);
         assertEquals("COACH", res.role());
         assertEquals("ACTIVE", res.status());
+    }
+
+    @Test
+    void managerCoachSportAssignmentNormalizesValidatesAndExposesSportIds() {
+        SportRepository domainSportRepository = mock(SportRepository.class);
+        Sport pickleball = new Sport();
+        pickleball.setSportId(2L);
+        pickleball.setSportName("Pickleball");
+        Sport tennis = new Sport();
+        tennis.setSportId(3L);
+        tennis.setSportName("Tennis");
+        when(domainSportRepository.findAllByOrderBySportIdAsc()).thenReturn(List.of(pickleball, tennis));
+        when(domainSportRepository.findAllById(List.of(3L, 2L))).thenReturn(List.of(pickleball, tennis));
+        when(domainSportRepository.findAllById(List.of(2L))).thenReturn(List.of(pickleball));
+        ReflectionTestUtils.setField(controller, "domainSportRepository", domainSportRepository);
+
+        when(authService.findUserByEmail("coach.sport@example.com")).thenReturn(Optional.empty());
+        when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
+            User u = invocation.getArgument(0);
+            if (u.getUserId() == null) u.setUserId(101L);
+            return u;
+        });
+
+        // Creating COACH without sports is rejected when sports catalog is active
+        var missingSportReq = new com.sporthub.backend.dto.CreateUserRequest(
+                "HLV Thiếu Môn", "coach.nosport@example.com", "0911222666", "SportHub@123", "COACH");
+        assertEquals(400, assertThrows(ResponseStatusException.class,
+                () -> controller.createUser(missingSportReq, manager)).getStatusCode().value());
+
+        // Creating COACH with sportIds saves canonical comma-separated sport names & coachedSports relation
+        var validCoachReq = new com.sporthub.backend.dto.CreateUserRequest(
+                "HLV Đủ Môn", "coach.sport@example.com", "0911222777", "SportHub@123",
+                "COACH", List.of(3L, 2L), null);
+        var created = controller.createUser(validCoachReq, manager);
+        assertEquals("Tennis, Pickleball", created.specialty());
+        assertEquals(List.of(2L, 3L), created.sportIds());
+        verify(userRepository).save(org.mockito.ArgumentMatchers.argThat(u ->
+                u.getCoachedSports() != null
+                        && u.getCoachedSports().stream().map(Sport::getSportId).collect(Collectors.toSet()).equals(Set.of(2L, 3L))));
+
+        // Search prioritizes coachedSports relation when populated, and falls back when empty
+        User existingCoach = User.builder()
+                .userId(5L)
+                .fullName("Trần Văn Minh")
+                .email("coach.minh@sporthub.com")
+                .role("COACH")
+                .status("ACTIVE")
+                .specialty("Tennis, Pickleball")
+                .coachedSports(Set.of(pickleball, tennis))
+                .build();
+        when(userRepository.searchManagerUsers("", "COACH", PageRequest.of(0, 12)))
+                .thenReturn(new PageImpl<>(List.of(existingCoach)));
+        var searchRes = controller.searchUsers("", "COACH", 0, 12, manager);
+        assertEquals("Tennis, Pickleball", searchRes.getContent().getFirst().specialty());
+        assertEquals(List.of(2L, 3L), searchRes.getContent().getFirst().sportIds());
+
+        // Update coach assigned sports updates both specialty and coachedSports
+        when(userRepository.findById(5L)).thenReturn(Optional.of(existingCoach));
+        var updated = controller.updateCoachSports(
+                5L, new ManagerController.UpdateCoachSportsRequest(List.of(2L), null), manager);
+        assertEquals("Pickleball", updated.specialty());
+        assertEquals(List.of(2L), updated.sportIds());
+        // Approve COACH requires sportIds/specialty when coach has no assigned sports
+        User newlyRegisteredCoach = pendingUser("COACH");
+        newlyRegisteredCoach.setUserId(15L);
+        when(userRepository.findById(15L)).thenReturn(Optional.of(newlyRegisteredCoach));
+        assertEquals(400, assertThrows(ResponseStatusException.class,
+                () -> controller.approveRegistration(15L, null, manager)).getStatusCode().value());
+
+        var approvedCoach = controller.approveRegistration(
+                15L, new ManagerController.UpdateCoachSportsRequest(List.of(3L, 2L), null), manager);
+        assertEquals("ACTIVE", newlyRegisteredCoach.getStatus());
+        assertEquals("Tennis, Pickleball", approvedCoach.specialty());
+        assertEquals(Set.of(2L, 3L),
+                newlyRegisteredCoach.getCoachedSports().stream().map(Sport::getSportId).collect(Collectors.toSet()));
     }
 
     private User pendingUser(String role) {

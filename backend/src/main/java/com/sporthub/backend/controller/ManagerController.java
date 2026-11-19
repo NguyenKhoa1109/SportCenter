@@ -9,17 +9,20 @@ import com.sporthub.backend.dto.PendingStaffRegistrationResponse;
 import com.sporthub.backend.entity.MembershipPackage;
 import com.sporthub.backend.entity.PaymentTransaction;
 import com.sporthub.backend.entity.PublicSport;
+import com.sporthub.backend.entity.Sport;
 import com.sporthub.backend.entity.User;
 import com.sporthub.backend.entity.UserMembership;
 import com.sporthub.backend.repository.MembershipPackageRepository;
 import com.sporthub.backend.repository.PaymentTransactionRepository;
 import com.sporthub.backend.repository.PublicSportRepository;
+import com.sporthub.backend.repository.SportRepository;
 import com.sporthub.backend.repository.UserMembershipRepository;
 import com.sporthub.backend.repository.UserRepository;
 import com.sporthub.backend.service.AuditLogService;
 import com.sporthub.backend.service.AuthService;
 import com.sporthub.backend.service.EmailService;
 import com.sporthub.backend.service.MembershipService;
+import com.sporthub.backend.util.CoachSportHelper;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -59,6 +62,9 @@ public class ManagerController {
     @Autowired(required = false)
     private PaymentTransactionRepository paymentTransactionRepository;
 
+    @Autowired(required = false)
+    private SportRepository domainSportRepository;
+
     @Autowired
     public ManagerController(
             UserRepository userRepository,
@@ -91,7 +97,8 @@ public class ManagerController {
                         user.getEmail(),
                         user.getPhone(),
                         user.getRole(),
-                        user.getCreatedAt()))
+                        user.getCreatedAt(),
+                        user.getSpecialty()))
                 .toList();
     }
 
@@ -115,18 +122,12 @@ public class ManagerController {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vai trò không hợp lệ.");
         }
 
+        List<Sport> allSports = loadDomainSports();
         return userRepository.searchManagerUsers(
                         query.trim(),
                         normalizedRole,
                         PageRequest.of(page, Math.min(Math.max(size, 1), 50)))
-                .map(user -> new ManagerUserResponse(
-                        user.getUserId(),
-                        user.getFullName(),
-                        user.getEmail(),
-                        user.getPhone(),
-                        user.getRole(),
-                        user.getStatus(),
-                        user.getCreatedAt()));
+                .map(user -> toUserResponse(user, allSports));
     }
 
     @GetMapping("/members")
@@ -252,9 +253,16 @@ public class ManagerController {
     @Transactional
     public PendingStaffRegistrationResponse approveRegistration(
             @PathVariable Long userId,
+            @RequestBody(required = false) UpdateCoachSportsRequest request,
             Authentication authentication) {
         requireManager(authentication);
-        return decide(userId, "ACTIVE");
+        return decide(userId, "ACTIVE", request);
+    }
+
+    public PendingStaffRegistrationResponse approveRegistration(
+            Long userId,
+            Authentication authentication) {
+        return approveRegistration(userId, null, authentication);
     }
 
     @PatchMapping("/staff-registrations/{userId}/reject")
@@ -263,7 +271,7 @@ public class ManagerController {
             @PathVariable Long userId,
             Authentication authentication) {
         requireManager(authentication);
-        return decide(userId, "INACTIVE");
+        return decide(userId, "INACTIVE", null);
     }
 
     @GetMapping("/memberships/pending")
@@ -455,7 +463,6 @@ public class ManagerController {
         }
 
         boolean requirePasswordChange = true;
-
         User user = User.builder()
                 .fullName(fullName)
                 .email(email)
@@ -465,6 +472,10 @@ public class ManagerController {
                 .status("ACTIVE")
                 .requirePasswordChange(requirePasswordChange)
                 .build();
+        if ("COACH".equals(targetRole)) {
+            CoachSportHelper.syncCoachSports(
+                    user, request.sportIds(), request.specialty(), domainSportRepository, true);
+        }
 
         User savedUser = userRepository.save(user);
         
@@ -479,14 +490,29 @@ public class ManagerController {
                     e.getMessage());
         }
         
-        return new ManagerUserResponse(
-                savedUser.getUserId(),
-                savedUser.getFullName(),
-                savedUser.getEmail(),
-                savedUser.getPhone(),
-                savedUser.getRole(),
-                savedUser.getStatus(),
-                savedUser.getCreatedAt());
+        return toUserResponse(savedUser, loadDomainSports());
+    }
+
+    @PutMapping("/coaches/{coachId}/sports")
+    @Transactional
+    public ManagerUserResponse updateCoachSports(
+            @PathVariable Long coachId,
+            @RequestBody UpdateCoachSportsRequest request,
+            Authentication authentication) {
+        requireManager(authentication);
+        User coach = userRepository.findById(coachId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy huấn luyện viên."));
+        if (!"COACH".equalsIgnoreCase(coach.getRole())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Người dùng này không phải Huấn luyện viên.");
+        }
+        CoachSportHelper.syncCoachSports(
+                coach,
+                request != null ? request.sportIds() : null,
+                request != null ? request.specialty() : null,
+                domainSportRepository,
+                true);
+        User saved = userRepository.save(coach);
+        return toUserResponse(saved, loadDomainSports());
     }
 
     private void validatePackage(ManagerPackageRequest request) {
@@ -529,7 +555,10 @@ public class ManagerController {
         membershipPackage.setStatus(request.status().trim().toUpperCase(Locale.ROOT));
     }
 
-    private PendingStaffRegistrationResponse decide(Long userId, String status) {
+    private PendingStaffRegistrationResponse decide(
+            Long userId,
+            String status,
+            UpdateCoachSportsRequest request) {
         User user = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Không tìm thấy đăng ký nhân viên."));
@@ -537,6 +566,24 @@ public class ManagerController {
                 || !STAFF_ROLES.contains(user.getRole().toUpperCase(Locale.ROOT))) {
             throw new ResponseStatusException(
                     HttpStatus.CONFLICT, "Đăng ký này đã được xử lý hoặc không hợp lệ.");
+        }
+
+        if ("ACTIVE".equals(status) && "COACH".equalsIgnoreCase(user.getRole())) {
+            if (request != null) {
+                if ((request.sportIds() == null || request.sportIds().isEmpty())
+                        && (request.specialty() == null || request.specialty().isBlank())) {
+                    throw new ResponseStatusException(
+                            HttpStatus.BAD_REQUEST,
+                            "Vui lòng chọn ít nhất một bộ môn giảng dạy cho Huấn luyện viên.");
+                }
+                CoachSportHelper.applyCoachSports(
+                        user, request.sportIds(), request.specialty(), domainSportRepository, true);
+            } else if ((user.getCoachedSports() == null || user.getCoachedSports().isEmpty())
+                    && (user.getSpecialty() == null || user.getSpecialty().isBlank())) {
+                throw new ResponseStatusException(
+                        HttpStatus.BAD_REQUEST,
+                        "Vui lòng chọn ít nhất một bộ môn giảng dạy cho Huấn luyện viên.");
+            }
         }
 
         user.setStatus(status);
@@ -547,7 +594,8 @@ public class ManagerController {
                 savedUser.getEmail(),
                 savedUser.getPhone(),
                 savedUser.getRole(),
-                savedUser.getCreatedAt());
+                savedUser.getCreatedAt(),
+                savedUser.getSpecialty());
     }
 
     private ManagerMemberResponse updateMemberStatus(Long userId, String expectedStatus, String status) {
@@ -609,5 +657,23 @@ public class ManagerController {
         }
     }
 
+    private List<Sport> loadDomainSports() {
+        return domainSportRepository == null ? List.of() : domainSportRepository.findAllByOrderBySportIdAsc();
+    }
+
+    private ManagerUserResponse toUserResponse(User user, List<Sport> allSports) {
+        return new ManagerUserResponse(
+                user.getUserId(),
+                user.getFullName(),
+                user.getEmail(),
+                user.getPhone(),
+                user.getRole(),
+                user.getStatus(),
+                user.getCreatedAt(),
+                user.getSpecialty(),
+                CoachSportHelper.resolveCoachSportIds(user, allSports));
+    }
+
     public record PackageStatusRequest(String status) {}
+    public record UpdateCoachSportsRequest(List<Long> sportIds, String specialty) {}
 }
