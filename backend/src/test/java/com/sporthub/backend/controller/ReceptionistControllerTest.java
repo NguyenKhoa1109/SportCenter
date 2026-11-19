@@ -107,21 +107,47 @@ class ReceptionistControllerTest {
     }
 
     @Test
-    void memberSearchReturnsPaginatedMemberSummaries() {
+    void memberSearchReturnsPaginatedMemberSummariesWithAvatarRfidAndPackages() {
         User member = User.builder()
                 .userId(9L)
                 .fullName("Nguyễn Anh Khoa")
                 .email("member@example.com")
                 .phone("0900000000")
                 .status("ACTIVE")
+                .avatar("https://example.com/avatar-khoa.jpg")
+                .rfidCode("RFID-SH-0009")
                 .build();
+        var membership = new com.sporthub.backend.entity.UserMembership();
+        membership.setMembershipId(41L);
+        membership.setUserId(9L);
+        membership.setPackageId(7L);
+        membership.setStartDate(LocalDate.now().minusDays(3));
+        membership.setEndDate(LocalDate.now().plusDays(27));
+        membership.setStatus("ACTIVE");
+        membership.setRemainingQuotaSessions(5);
+        membership.setRemainingQuotaCourts(3);
+        var pkg = com.sporthub.backend.entity.MembershipPackage.builder()
+                .packageId(7L)
+                .name("Gói Vàng All-Access")
+                .build();
+
         when(userRepository.searchMembers(eq("Khoa"), any(PageRequest.class)))
                 .thenReturn(new PageImpl<>(List.of(member), PageRequest.of(0, 20), 1));
+        when(membershipRepository.findByUserIdInOrderByEndDateDesc(List.of(9L)))
+                .thenReturn(List.of(membership));
+        when(packageRepository.findAllById(java.util.Set.of(7L)))
+                .thenReturn(List.of(pkg));
 
         var result = controller.searchMembers("Khoa", 0, 20, receptionist);
 
         assertEquals(1, result.getTotalElements());
-        assertEquals("Nguyễn Anh Khoa", result.getContent().get(0).fullName());
+        var row = result.getContent().get(0);
+        assertEquals("Nguyễn Anh Khoa", row.fullName());
+        assertEquals("https://example.com/avatar-khoa.jpg", row.avatar());
+        assertEquals("RFID-SH-0009", row.rfidCode());
+        assertEquals("Gói Vàng All-Access", row.activePackageName());
+        assertEquals(5, row.remainingQuotaSessions());
+        assertEquals(1, row.activePackages().size());
     }
 
     @Test
@@ -252,41 +278,59 @@ class ReceptionistControllerTest {
     }
 
     @Test
-    void createCoachValidatesAndPersistsSelectedSports() {
-        var domainSportRepository = mock(com.sporthub.backend.repository.SportRepository.class);
-        var badminton = new com.sporthub.backend.entity.Sport();
-        badminton.setSportId(6L);
-        badminton.setSportName("Cầu lông");
-        when(domainSportRepository.findAllByOrderBySportIdAsc()).thenReturn(List.of(badminton));
-        when(domainSportRepository.findAllById(List.of(6L))).thenReturn(List.of(badminton));
-        org.springframework.test.util.ReflectionTestUtils.setField(controller, "domainSportRepository", domainSportRepository);
-
-        assertEquals(1, controller.getDomainSports(receptionist).size());
-
-        when(authService.findUserByEmail("coach.rec@example.com")).thenReturn(java.util.Optional.empty());
+    void receptionistCanOnlyCreateMemberUserAndCannotCreateStaffRoles() {
+        when(authService.findUserByEmail("member.rec@example.com")).thenReturn(java.util.Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(inv -> {
             User saved = inv.getArgument(0);
             saved.setUserId(88L);
             return saved;
         });
 
-        var missingSports = new com.sporthub.backend.dto.CreateUserRequest(
-                "HLV Thiếu Môn", "coach.rec@example.com", "0912345679", "SportHub@123", "COACH");
-        var badEx = org.junit.jupiter.api.Assertions.assertThrows(
-                org.springframework.web.server.ResponseStatusException.class,
-                () -> controller.createUser(missingSports, receptionist));
-        assertEquals(400, badEx.getStatusCode().value());
+        for (String forbiddenRole : List.of("COACH", "RECEPTIONIST", "MANAGER", "ADMIN")) {
+            var forbiddenReq = new com.sporthub.backend.dto.CreateUserRequest(
+                    "Nhân sự Bị Chặn", "blocked." + forbiddenRole.toLowerCase() + "@example.com",
+                    "0912345679", "SportHub@123", forbiddenRole);
+            when(authService.findUserByEmail(forbiddenReq.email())).thenReturn(java.util.Optional.empty());
+            var ex = org.junit.jupiter.api.Assertions.assertThrows(
+                    org.springframework.web.server.ResponseStatusException.class,
+                    () -> controller.createUser(forbiddenReq, receptionist));
+            assertEquals(403, ex.getStatusCode().value());
+        }
 
-        var validCoach = new com.sporthub.backend.dto.CreateUserRequest(
-                "HLV Cầu Lông", "coach.rec@example.com", "0912345679", "SportHub@123",
-                "COACH", List.of(6L), null);
-        var res = controller.createUser(validCoach, receptionist);
+        var validMember = new com.sporthub.backend.dto.CreateUserRequest(
+                "Hội Viên Quầy", "member.rec@example.com", "0912345679", "SportHub@123", "MEMBER");
+        var res = controller.createUser(validMember, receptionist);
         assertEquals(88L, res.userId());
+        assertEquals("Hội Viên Quầy", res.fullName());
         org.mockito.Mockito.verify(userRepository).save(org.mockito.ArgumentMatchers.argThat(
-                u -> "Cầu lông".equals(u.getSpecialty())
-                        && "COACH".equals(u.getRole())
-                        && u.getCoachedSports() != null
-                        && u.getCoachedSports().stream().anyMatch(s -> Long.valueOf(6L).equals(s.getSportId()))));
+                u -> "MEMBER".equals(u.getRole()) && "ACTIVE".equals(u.getStatus())));
+    }
+
+    @Test
+    void enrollAndCancelClassDelegationWorksForReceptionist() {
+        var bookingService = mock(com.sporthub.backend.service.BookingService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "bookingService", bookingService);
+
+        var confirm = new com.sporthub.backend.dto.BookingConfirmationResponse(
+                "CLASS", 301L, 401L, "Yoga Sáng", "Yoga", "Phòng A1",
+                LocalDateTime.now().plusDays(1), LocalDateTime.now().plusDays(1).plusHours(1),
+                new BigDecimal("120000"), "PAID", "CLS-REC-301");
+        when(bookingService.enrollMemberInClassByReceptionist(22L, 9L, "CASH", false, null, 3L, "RECEPTIONIST"))
+                .thenReturn(confirm);
+
+        var enrolled = controller.enrollMemberInClass(
+                22L,
+                new ReceptionistController.ReceptionistClassEnrollRequest(9L, "CASH", false, null),
+                receptionist);
+        assertEquals(301L, enrolled.bookingId());
+        assertEquals("PAID", enrolled.paymentStatus());
+
+        var cancelResp = com.sporthub.backend.dto.CancelBookingResponse.builder()
+                .bookingId(301L).status("CANCELLED").refunded(true).build();
+        when(bookingService.cancelClassBookingByStaff(301L, 3L, "RECEPTIONIST")).thenReturn(cancelResp);
+
+        var cancelled = controller.cancelMemberClassBooking(301L, receptionist);
+        assertEquals("CANCELLED", cancelled.getStatus());
     }
 
     @Test

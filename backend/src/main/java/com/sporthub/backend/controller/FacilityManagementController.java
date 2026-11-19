@@ -48,6 +48,9 @@ public class FacilityManagementController {
     private final SportsCourtRepository sportsCourtRepository;
     private final com.sporthub.backend.service.FacilityCourtSyncService syncService;
 
+    @Autowired(required = false)
+    private com.sporthub.backend.service.CoachAvailabilityService coachAvailabilityService;
+
     @Autowired
     public FacilityManagementController(
             FacilityRepository facilityRepository,
@@ -168,6 +171,10 @@ public class FacilityManagementController {
             LocalDateTime start = request.startTime().plusWeeks(index);
             LocalDateTime end = request.endTime().plusWeeks(index);
 
+            if (coachAvailabilityService != null) {
+                coachAvailabilityService.requireAvailable(coach, start, end);
+            }
+
             boolean coachConflict = existingCoachSessions.stream()
                     .anyMatch(existing -> !"CANCELLED".equalsIgnoreCase(existing.getStatus())
                             && start.isBefore(existing.getEndTime()) && end.isAfter(existing.getStartTime()));
@@ -257,21 +264,27 @@ public class FacilityManagementController {
         if (request.className() != null && !request.className().isBlank()) {
             session.setClassName(request.className().trim());
         }
+        User targetCoach = null;
         if (request.coachId() != null) {
             if (sessionSport == null) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ca học chưa gắn bộ môn hợp lệ.");
             }
-            User coach = userRepository.findById(request.coachId())
+            targetCoach = userRepository.findById(request.coachId())
                     .filter(u -> "COACH".equalsIgnoreCase(u.getRole()))
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Huấn luyện viên không hợp lệ."));
-            CoachSportHelper.requireCoachTeachesSport(coach, sessionSport);
+            CoachSportHelper.requireCoachTeachesSport(targetCoach, sessionSport);
             session.setCoachId(request.coachId());
+        } else if (request.startTime() != null && request.endTime() != null && session.getCoachId() != null) {
+            targetCoach = userRepository.findById(session.getCoachId()).orElse(null);
         }
         if (request.facilityId() != null) {
             Facility targetFacility = facilityRepository.findById(request.facilityId())
                     .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cơ sở không hợp lệ."));
             if (session.getSportId() != null && !Objects.equals(targetFacility.getSportId(), session.getSportId())) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Cơ sở được chọn không phù hợp với bộ môn của ca học.");
+            }
+            if ("MAINTENANCE".equalsIgnoreCase(targetFacility.getStatus())) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Cơ sở đang bảo trì.");
             }
             session.setFacilityId(request.facilityId());
         }
@@ -282,6 +295,27 @@ public class FacilityManagementController {
             session.setStartTime(request.startTime());
             session.setEndTime(request.endTime());
         }
+        String targetStatus = (request.status() != null && !request.status().isBlank())
+                ? request.status().trim().toUpperCase(Locale.ROOT)
+                : session.getStatus();
+        if (!"CANCELLED".equalsIgnoreCase(targetStatus)
+                && (request.coachId() != null || (request.startTime() != null && request.endTime() != null))
+                && targetCoach != null && session.getStartTime() != null && session.getEndTime() != null) {
+            if (coachAvailabilityService != null) {
+                coachAvailabilityService.requireAvailable(targetCoach, session.getStartTime(), session.getEndTime());
+            }
+            LocalDateTime targetStart = session.getStartTime();
+            LocalDateTime targetEnd = session.getEndTime();
+            boolean coachConflict = classSessionRepository.findByCoachIdOrderByStartTimeAsc(targetCoach.getUserId()).stream()
+                    .anyMatch(existing -> !Objects.equals(existing.getSessionId(), sessionId)
+                            && !"CANCELLED".equalsIgnoreCase(existing.getStatus())
+                            && targetStart.isBefore(existing.getEndTime())
+                            && targetEnd.isAfter(existing.getStartTime()));
+            if (coachConflict) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Huấn luyện viên đã có ca dạy khác bị trùng giờ trong khung giờ này.");
+            }
+        }
         if (request.maxSlots() != null && request.maxSlots() > 0) {
             session.setMaxSlots(request.maxSlots());
         }
@@ -289,7 +323,7 @@ public class FacilityManagementController {
             session.setPriceAmount(request.priceAmount());
         }
         if (request.status() != null && !request.status().isBlank()) {
-            session.setStatus(request.status().trim().toUpperCase(Locale.ROOT));
+            session.setStatus(targetStatus);
         }
 
         ClassSession saved = classSessionRepository.save(session);

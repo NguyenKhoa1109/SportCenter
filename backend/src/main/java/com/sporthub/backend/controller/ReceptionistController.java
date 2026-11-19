@@ -93,6 +93,8 @@ public class ReceptionistController {
     private com.sporthub.backend.repository.CourtBookingRepository courtBookingRepository;
     @Autowired(required = false)
     private SportRepository domainSportRepository;
+    @Autowired(required = false)
+    private com.sporthub.backend.service.BookingService bookingService;
 
     @Autowired
     public ReceptionistController(
@@ -145,17 +147,83 @@ public class ReceptionistController {
         if (page < 0) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số trang không hợp lệ.");
         }
-        return userRepository.searchMembers(
-                        query.trim(), PageRequest.of(page, Math.min(Math.max(size, 1), 50)))
-                .map(user -> new ReceptionistMemberResponse(
-                        user.getUserId(),
-                        user.getFullName(),
-                        user.getEmail(),
-                        user.getPhone(),
-                        user.getStatus(),
-                        user.getCreatedAt(),
-                        user.getEmergencyContactName(),
-                        user.getEmergencyContactPhone()));
+        Page<User> usersPage = userRepository.searchMembers(
+                query.trim(), PageRequest.of(page, Math.min(Math.max(size, 1), 50)));
+        Map<Long, List<ReceptionistMemberResponse.ActivePackageSummary>> activePackagesByMember =
+                loadActivePackageSummaries(usersPage.getContent());
+        return usersPage.map(user -> {
+            List<ReceptionistMemberResponse.ActivePackageSummary> summaries =
+                    activePackagesByMember.getOrDefault(user.getUserId(), List.of());
+            ReceptionistMemberResponse.ActivePackageSummary primary = summaries.isEmpty() ? null : summaries.get(0);
+            int totalSessions = summaries.stream()
+                    .map(ReceptionistMemberResponse.ActivePackageSummary::remainingQuotaSessions)
+                    .filter(Objects::nonNull)
+                    .mapToInt(Integer::intValue)
+                    .sum();
+            return new ReceptionistMemberResponse(
+                    user.getUserId(),
+                    user.getFullName(),
+                    user.getEmail(),
+                    user.getPhone(),
+                    user.getStatus(),
+                    user.getCreatedAt(),
+                    user.getEmergencyContactName(),
+                    user.getEmergencyContactPhone(),
+                    user.getAvatar(),
+                    user.getRfidCode(),
+                    primary != null ? primary.packageName() : null,
+                    primary != null ? primary.endDate() : null,
+                    totalSessions,
+                    summaries);
+        });
+    }
+
+    private Map<Long, List<ReceptionistMemberResponse.ActivePackageSummary>> loadActivePackageSummaries(List<User> users) {
+        if (users == null || users.isEmpty() || membershipRepository == null) {
+            return Map.of();
+        }
+        List<Long> memberIds = users.stream().map(User::getUserId).filter(Objects::nonNull).toList();
+        if (memberIds.isEmpty()) {
+            return Map.of();
+        }
+        LocalDate today = LocalDate.now();
+        List<UserMembership> rawMemberships = membershipRepository.findByUserIdInOrderByEndDateDesc(memberIds);
+        if (rawMemberships == null || rawMemberships.isEmpty()) {
+            return Map.of();
+        }
+        List<UserMembership> active = rawMemberships.stream()
+                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus())
+                        && (m.getStartDate() == null || !m.getStartDate().isAfter(today))
+                        && (m.getEndDate() == null || !m.getEndDate().isBefore(today)))
+                .toList();
+        if (active.isEmpty()) {
+            return Map.of();
+        }
+        Set<Long> packageIds = active.stream()
+                .map(UserMembership::getPackageId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+        Map<Long, MembershipPackage> pkgMap = (packageRepository != null && !packageIds.isEmpty())
+                ? packageRepository.findAllById(packageIds).stream()
+                        .collect(Collectors.toMap(MembershipPackage::getPackageId, Function.identity(), (a, b) -> a))
+                : Map.of();
+        Map<Long, List<ReceptionistMemberResponse.ActivePackageSummary>> grouped = new LinkedHashMap<>();
+        for (UserMembership m : active) {
+            MembershipPackage pkg = pkgMap.get(m.getPackageId());
+            String pkgName = pkg != null && pkg.getName() != null ? pkg.getName() : "Gói tập #" + m.getPackageId();
+            Integer remainingSessions = m.getRemainingQuotaSessions() != null ? m.getRemainingQuotaSessions() : 0;
+            Integer remainingCourts = m.getRemainingQuotaCourts() != null ? m.getRemainingQuotaCourts() : 0;
+            grouped.computeIfAbsent(m.getUserId(), k -> new ArrayList<>())
+                    .add(new ReceptionistMemberResponse.ActivePackageSummary(
+                            m.getMembershipId(),
+                            m.getPackageId(),
+                            pkgName,
+                            m.getStartDate(),
+                            m.getEndDate(),
+                            remainingSessions,
+                            remainingCourts));
+        }
+        return grouped;
     }
 
     @GetMapping("/check-ins")
@@ -517,9 +585,8 @@ public class ReceptionistController {
         boolean isManager = authentication != null && authentication.getAuthorities().stream()
                 .anyMatch(authority -> List.of("ROLE_MANAGER", "ROLE_ADMIN").contains(authority.getAuthority()));
         if (!isManager) {
-            // Lễ tân tạo ở trang quản trị: chỉ được chọn MEMBER, COACH hoặc RECEPTIONIST
-            if (!List.of("MEMBER", "COACH", "RECEPTIONIST").contains(targetRole)) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lễ tân chỉ có quyền tạo tài khoản Hội viên, Huấn luyện viên hoặc Lễ tân.");
+            if (!"MEMBER".equals(targetRole)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lễ tân chỉ được phép tạo tài khoản Hội viên (MEMBER).");
             }
         } else {
             // Manager tạo ở trang quản trị: cả 4 vai trò
@@ -564,7 +631,57 @@ public class ReceptionistController {
                 savedUser.getEmail(),
                 savedUser.getPhone(),
                 savedUser.getStatus(),
-                savedUser.getCreatedAt());
+                savedUser.getCreatedAt(),
+                savedUser.getEmergencyContactName(),
+                savedUser.getEmergencyContactPhone(),
+                savedUser.getAvatar(),
+                savedUser.getRfidCode(),
+                null,
+                null,
+                0,
+                List.of());
+    }
+
+    public record ReceptionistClassEnrollRequest(
+            Long memberId,
+            String paymentMethod,
+            Boolean useQuota,
+            String voucherCode) {}
+
+    @PostMapping("/classes/{sessionId}/enroll")
+    @Transactional
+    public com.sporthub.backend.dto.BookingConfirmationResponse enrollMemberInClass(
+            @org.springframework.web.bind.annotation.PathVariable Long sessionId,
+            @RequestBody ReceptionistClassEnrollRequest request,
+            Authentication authentication) {
+        requireStaff(authentication);
+        if (bookingService == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Dịch vụ đặt lớp chưa sẵn sàng.");
+        }
+        if (request == null || request.memberId() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn hội viên cần đăng ký.");
+        }
+        return bookingService.enrollMemberInClassByReceptionist(
+                sessionId,
+                request.memberId(),
+                request.paymentMethod(),
+                request.useQuota(),
+                request.voucherCode(),
+                actorId(authentication),
+                actorRole(authentication));
+    }
+
+    @org.springframework.web.bind.annotation.DeleteMapping({"/classes/bookings/{bookingId}", "/bookings/{bookingId}"})
+    @Transactional
+    public com.sporthub.backend.dto.CancelBookingResponse cancelMemberClassBooking(
+            @org.springframework.web.bind.annotation.PathVariable Long bookingId,
+            Authentication authentication) {
+        requireStaff(authentication);
+        if (bookingService == null) {
+            throw new ResponseStatusException(HttpStatus.SERVICE_UNAVAILABLE, "Dịch vụ đặt lớp chưa sẵn sàng.");
+        }
+        return bookingService.cancelClassBookingByStaff(
+                bookingId, actorId(authentication), actorRole(authentication));
     }
 
     public record AvatarUpdateRequest(String avatar) {}
@@ -1014,6 +1131,18 @@ public class ReceptionistController {
         } catch (NumberFormatException exception) {
             throw new ResponseStatusException(HttpStatus.UNAUTHORIZED, "Phiên đăng nhập không hợp lệ.");
         }
+    }
+
+    private String actorRole(Authentication authentication) {
+        if (authentication == null || authentication.getAuthorities() == null) {
+            return "";
+        }
+        return authentication.getAuthorities().stream()
+                .map(a -> a.getAuthority())
+                .filter(a -> a != null && a.startsWith("ROLE_"))
+                .map(a -> a.substring("ROLE_".length()).toUpperCase(Locale.ROOT))
+                .findFirst()
+                .orElse("");
     }
 
     private String normalizeMethod(String method) {

@@ -211,7 +211,7 @@ public class EngagementController {
 
     // ------------------------------------------------------------- Notifications
 
-    @GetMapping({"/notifications", "/members/me/notifications"})
+    @GetMapping("/notifications")
     public Map<String, Object> myNotifications(Authentication auth) {
         List<Notification> list = notificationRepository.findByUserIdOrderByCreatedAtDesc(actorId(auth));
         Map<String, Object> result = new LinkedHashMap<>();

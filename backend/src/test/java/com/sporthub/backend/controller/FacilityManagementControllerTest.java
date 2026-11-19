@@ -3,19 +3,24 @@ package com.sporthub.backend.controller;
 import com.sporthub.backend.dto.CreateClassSessionRequest;
 import com.sporthub.backend.dto.UpdateClassSessionRequest;
 import com.sporthub.backend.entity.ClassSession;
+import com.sporthub.backend.entity.CoachLeaveRequest;
 import com.sporthub.backend.entity.Facility;
 import com.sporthub.backend.entity.Sport;
 import com.sporthub.backend.entity.User;
 import com.sporthub.backend.repository.ClassSessionRepository;
+import com.sporthub.backend.repository.CoachLeaveRequestRepository;
 import com.sporthub.backend.repository.FacilityRepository;
 import com.sporthub.backend.repository.SportRepository;
 import com.sporthub.backend.repository.UserRepository;
+import com.sporthub.backend.service.CoachAvailabilityService;
 import org.junit.jupiter.api.Test;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
 import java.math.BigDecimal;
+import java.time.DayOfWeek;
 import java.time.LocalDateTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -298,5 +303,120 @@ class FacilityManagementControllerTest {
         var saved = controller.createClassSession(allowedReq, manager);
         assertEquals(1, saved.size());
         assertEquals(11L, saved.getFirst().getCoachId());
+    }
+
+    @Test
+    void classCreationRejectsCoachOnApprovedLeave() {
+        CoachLeaveRequestRepository leaveRepository = mock(CoachLeaveRequestRepository.class);
+        FacilityManagementController controllerWithAvail = new FacilityManagementController(
+                facilityRepository, sportRepository, userRepository, classSessionRepository);
+        ReflectionTestUtils.setField(controllerWithAvail, "coachAvailabilityService",
+                new CoachAvailabilityService(leaveRepository));
+
+        Facility facility = new Facility();
+        facility.setFacilityId(7L);
+        facility.setSportId(3L);
+        facility.setStatus("AVAILABLE");
+        Sport badminton = new Sport();
+        badminton.setSportId(3L);
+        badminton.setSportName("Cầu lông");
+        User coach = User.builder()
+                .userId(9L)
+                .fullName("HLV Thảo")
+                .role("COACH")
+                .status("ACTIVE")
+                .specialty("Cầu lông")
+                .build();
+
+        LocalDateTime startTime = LocalDateTime.now().plusDays(2).withHour(9).withMinute(0).withSecond(0).withNano(0);
+        when(facilityRepository.findById(7L)).thenReturn(Optional.of(facility));
+        when(sportRepository.findById(3L)).thenReturn(Optional.of(badminton));
+        when(userRepository.findById(9L)).thenReturn(Optional.of(coach));
+        when(leaveRepository.findByCoachIdOrderByCreatedAtDesc(9L)).thenReturn(List.of(
+                CoachLeaveRequest.builder()
+                        .requestId(1L)
+                        .coachId(9L)
+                        .leaveType("PERSONAL_LEAVE")
+                        .startDate(startTime.toLocalDate())
+                        .endDate(startTime.toLocalDate())
+                        .reason("Nghỉ phép cá nhân")
+                        .status("APPROVED")
+                        .build()));
+
+        CreateClassSessionRequest request = new CreateClassSessionRequest(
+                "Lớp cầu lông", 3L, 9L, 7L, startTime, startTime.plusHours(1),
+                1, 10, new BigDecimal("150000"));
+
+        ResponseStatusException ex = assertThrows(ResponseStatusException.class,
+                () -> controllerWithAvail.createClassSession(request, manager));
+        assertEquals(409, ex.getStatusCode().value());
+        assertTrue(ex.getReason().contains("nghỉ phép"));
+    }
+
+    @Test
+    void classUpdateRejectsUnavailableCoachOrMaintenanceFacility() {
+        CoachLeaveRequestRepository leaveRepository = mock(CoachLeaveRequestRepository.class);
+        FacilityManagementController controllerWithAvail = new FacilityManagementController(
+                facilityRepository, sportRepository, userRepository, classSessionRepository);
+        ReflectionTestUtils.setField(controllerWithAvail, "coachAvailabilityService",
+                new CoachAvailabilityService(leaveRepository));
+
+        Sport tennis = new Sport();
+        tennis.setSportId(3L);
+        tennis.setSportName("Tennis");
+        LocalDateTime start = LocalDateTime.now().plusDays(3).withHour(19).withMinute(0).withSecond(0).withNano(0);
+        DayOfWeek dow = start.getDayOfWeek();
+
+        ClassSession session = ClassSession.builder()
+                .sessionId(50L)
+                .className("Lớp Tennis Tối")
+                .sportId(3L)
+                .coachId(5L)
+                .facilityId(7L)
+                .startTime(start)
+                .endTime(start.plusHours(1))
+                .maxSlots(8)
+                .status("SCHEDULED")
+                .build();
+
+        User unavailableCoach = User.builder()
+                .userId(6L)
+                .fullName("HLV Minh")
+                .role("COACH")
+                .status("ACTIVE")
+                .specialty("Tennis")
+                .availabilityJson("[{\"day\":\"" + dow.name() + "\",\"morning\":true,\"afternoon\":false,\"evening\":false}]")
+                .build();
+        User availableCoach = User.builder()
+                .userId(8L)
+                .fullName("HLV An")
+                .role("COACH")
+                .status("ACTIVE")
+                .specialty("Tennis")
+                .build();
+        Facility maintenanceFacility = new Facility();
+        maintenanceFacility.setFacilityId(7L);
+        maintenanceFacility.setSportId(3L);
+        maintenanceFacility.setStatus("MAINTENANCE");
+
+        when(classSessionRepository.findById(50L)).thenReturn(Optional.of(session));
+        when(sportRepository.findById(3L)).thenReturn(Optional.of(tennis));
+        when(userRepository.findById(6L)).thenReturn(Optional.of(unavailableCoach));
+        when(userRepository.findById(8L)).thenReturn(Optional.of(availableCoach));
+        when(leaveRepository.findByCoachIdOrderByCreatedAtDesc(6L)).thenReturn(List.of());
+        when(leaveRepository.findByCoachIdOrderByCreatedAtDesc(8L)).thenReturn(List.of());
+        when(facilityRepository.findById(7L)).thenReturn(Optional.of(maintenanceFacility));
+
+        ResponseStatusException unavailEx = assertThrows(ResponseStatusException.class,
+                () -> controllerWithAvail.updateClassSession(50L,
+                        new UpdateClassSessionRequest(null, 6L, 7L, null, null, null, null, null),
+                        manager));
+        assertEquals(409, unavailEx.getStatusCode().value());
+
+        ResponseStatusException maintEx = assertThrows(ResponseStatusException.class,
+                () -> controllerWithAvail.updateClassSession(50L,
+                        new UpdateClassSessionRequest(null, 8L, 7L, null, null, null, null, null),
+                        manager));
+        assertEquals(409, maintEx.getStatusCode().value());
     }
 }

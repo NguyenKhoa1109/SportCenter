@@ -116,7 +116,7 @@ public class BookingFlowController {
         requireMember(authentication);
         String normalizedType = bookingType.toUpperCase(java.util.Locale.ROOT);
         com.sporthub.backend.dto.CancelBookingResponse response;
-        if ("CLASS".equals(normalizedType)) {
+        if ("CLASS".equals(normalizedType) || "PT".equals(normalizedType)) {
             response = bookingService.cancelClassBooking(bookingId, actorId(authentication));
         } else if ("COURT".equals(normalizedType)) {
             response = bookingService.cancelCourtBooking(bookingId, actorId(authentication));

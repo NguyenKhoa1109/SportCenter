@@ -790,6 +790,67 @@ class BookingServiceTest {
                 eq("BOOKING"));
     }
 
+    @Test
+    void receptionistCanEnrollAndCancelClassForMember() {
+        ClassSession session = session(5);
+        User member = User.builder().userId(11L).role("MEMBER").status("ACTIVE").build();
+        PublicSport sport = sport(4L, "Pickleball");
+        PublicFacility facility = facility(5L, "Court hall");
+        User coach = User.builder().userId(8L).fullName("Coach").build();
+        lenient().when(userRepository.findById(11L)).thenReturn(Optional.of(member));
+        lenient().when(userRepository.findByIdForUpdate(11L)).thenReturn(Optional.of(member));
+        when(classSessionRepository.findByIdForUpdate(22L)).thenReturn(Optional.of(session));
+        when(bookingRepository.existsByMemberIdAndSessionIdAndStatusIn(eq(11L), eq(22L), anyList())).thenReturn(false);
+        when(bookingRepository.countBySessionIdAndStatusIn(eq(22L), anyList())).thenReturn(0L, 1L, 0L);
+        when(publicSportRepository.findById(4L)).thenReturn(Optional.of(sport));
+        when(publicFacilityRepository.findById(5L)).thenReturn(Optional.of(facility));
+        lenient().when(userRepository.findById(8L)).thenReturn(Optional.of(coach));
+        PaymentTransaction savedTx = new PaymentTransaction();
+        savedTx.setPaymentId(77L);
+        savedTx.setAmount(new BigDecimal("275000"));
+        savedTx.setPaymentMethod(PaymentConstants.METHOD_CASH_COUNTER);
+        savedTx.setPaymentStatus("PENDING");
+        savedTx.setReferenceCode("CLS-CASH77");
+        when(paymentTransactionRepository.save(any(PaymentTransaction.class))).thenAnswer(inv -> {
+            PaymentTransaction p = inv.getArgument(0);
+            if (p.getPaymentId() == null) p.setPaymentId(77L);
+            return p;
+        });
+        when(paymentTransactionRepository.findById(77L)).thenReturn(Optional.of(savedTx));
+        Booking savedBooking = Booking.builder().bookingId(88L).memberId(11L).sessionId(22L).status("BOOKED").build();
+        when(bookingRepository.save(any(Booking.class))).thenAnswer(inv -> {
+            Booking b = inv.getArgument(0);
+            if (b.getBookingId() == null) b.setBookingId(88L);
+            return b;
+        });
+        when(bookingRepository.findById(88L)).thenReturn(Optional.of(savedBooking));
+
+        BookingConfirmationResponse enrollRes = bookingService.enrollMemberInClassByReceptionist(
+                22L, 11L, "CASH", false, null, 3L, "RECEPTIONIST");
+        assertEquals("PAID", enrollRes.paymentStatus());
+        assertEquals("CONFIRMED", savedBooking.getStatus());
+        verify(engagementService).audit(eq(3L), eq("RECEPTIONIST"), eq("RECEPTION_CLASS_ENROLL"), any());
+
+        // Staff cancellation on a quota booking refunds quota and notifies member
+        Booking quotaBooking = Booking.builder()
+                .bookingId(102L).memberId(11L).sessionId(22L).paymentId(100L)
+                .usesMembershipQuota(true).membershipId(55L).status("CONFIRMED").build();
+        PaymentTransaction quotaTx = new PaymentTransaction();
+        quotaTx.setPaymentId(100L);
+        quotaTx.setBookingType("CLASS");
+        quotaTx.setReferenceCode("CLS-Q100");
+        quotaTx.setAmount(BigDecimal.ZERO);
+        quotaTx.setPaymentStatus(PaymentConstants.PAYMENT_STATUS_PAID);
+        when(bookingRepository.findByIdForUpdate(102L)).thenReturn(Optional.of(quotaBooking));
+        when(paymentTransactionRepository.findByIdForUpdate(100L)).thenReturn(Optional.of(quotaTx));
+        when(paymentTransactionRepository.findById(100L)).thenReturn(Optional.of(quotaTx));
+
+        CancelBookingResponse cancelRes = bookingService.cancelClassBookingByStaff(102L, 3L, "RECEPTIONIST");
+        assertEquals("CANCELLED", cancelRes.getStatus());
+        assertTrue(Boolean.TRUE.equals(cancelRes.getRefunded()));
+        verify(engagementService).audit(eq(3L), eq("RECEPTIONIST"), eq("RECEPTION_CLASS_CANCEL"), any());
+    }
+
     private SportsCourt court() {
         SportsCourt court = new SportsCourt();
         court.setCourtId(33L);

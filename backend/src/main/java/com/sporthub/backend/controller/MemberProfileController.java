@@ -31,6 +31,7 @@ import com.sporthub.backend.dto.AvatarUpdateRequest;
 import com.sporthub.backend.dto.MemberAttendanceRecordResponse;
 import com.sporthub.backend.dto.MemberAttendanceSummaryResponse;
 import com.sporthub.backend.dto.MemberCheckInResponse;
+import com.sporthub.backend.dto.MemberCourtBookingAttendanceResponse;
 import com.sporthub.backend.dto.MemberHealthProfileRequest;
 import com.sporthub.backend.dto.MemberMembershipResponse;
 import com.sporthub.backend.dto.MemberNotificationResponse;
@@ -42,21 +43,25 @@ import com.sporthub.backend.dto.MemberTransactionResponse;
 import com.sporthub.backend.dto.MembershipQuotaResponse;
 import com.sporthub.backend.entity.Booking;
 import com.sporthub.backend.entity.ClassSession;
+import com.sporthub.backend.entity.CourtBooking;
 import com.sporthub.backend.entity.MemberHealthProfile;
 import com.sporthub.backend.entity.MembershipPackage;
 import com.sporthub.backend.entity.PaymentTransaction;
 import com.sporthub.backend.entity.PublicSport;
 import com.sporthub.backend.entity.ReceptionPayment;
+import com.sporthub.backend.entity.SportsCourt;
 import com.sporthub.backend.entity.User;
 import com.sporthub.backend.entity.UserMembership;
 import com.sporthub.backend.repository.BookingRepository;
 import com.sporthub.backend.repository.ClassSessionRepository;
+import com.sporthub.backend.repository.CourtBookingRepository;
 import com.sporthub.backend.repository.MemberCheckInRepository;
 import com.sporthub.backend.repository.MemberHealthProfileRepository;
 import com.sporthub.backend.repository.MembershipPackageRepository;
 import com.sporthub.backend.repository.PaymentTransactionRepository;
 import com.sporthub.backend.repository.PublicSportRepository;
 import com.sporthub.backend.repository.ReceptionPaymentRepository;
+import com.sporthub.backend.repository.SportsCourtRepository;
 import com.sporthub.backend.repository.UserMembershipRepository;
 import com.sporthub.backend.repository.UserRepository;
 import com.sporthub.backend.service.PaymentService;
@@ -77,9 +82,14 @@ public class MemberProfileController {
     private final MemberCheckInRepository memberCheckInRepository;
     private final PublicSportRepository publicSportRepository;
     private final PaymentService paymentService;
+    @Autowired(required = false)
+    private CourtBookingRepository courtBookingRepository;
+    @Autowired(required = false)
+    private SportsCourtRepository sportsCourtRepository;
     @Autowired private com.sporthub.backend.service.MembershipService entitlementService;
     @Autowired private com.sporthub.backend.service.VoucherService voucherService;
 
+    @Autowired
     public MemberProfileController(
             UserRepository userRepository,
             MemberHealthProfileRepository healthRepository,
@@ -92,6 +102,25 @@ public class MemberProfileController {
             MemberCheckInRepository memberCheckInRepository,
             PublicSportRepository publicSportRepository,
             PaymentService paymentService) {
+        this(userRepository, healthRepository, membershipRepository, packageRepository, paymentRepository,
+                paymentTransactionRepository, bookingRepository, classSessionRepository, memberCheckInRepository,
+                publicSportRepository, paymentService, null, null);
+    }
+
+    public MemberProfileController(
+            UserRepository userRepository,
+            MemberHealthProfileRepository healthRepository,
+            UserMembershipRepository membershipRepository,
+            MembershipPackageRepository packageRepository,
+            ReceptionPaymentRepository paymentRepository,
+            PaymentTransactionRepository paymentTransactionRepository,
+            BookingRepository bookingRepository,
+            ClassSessionRepository classSessionRepository,
+            MemberCheckInRepository memberCheckInRepository,
+            PublicSportRepository publicSportRepository,
+            PaymentService paymentService,
+            CourtBookingRepository courtBookingRepository,
+            SportsCourtRepository sportsCourtRepository) {
         this.userRepository = userRepository;
         this.healthRepository = healthRepository;
         this.membershipRepository = membershipRepository;
@@ -103,6 +132,8 @@ public class MemberProfileController {
         this.memberCheckInRepository = memberCheckInRepository;
         this.publicSportRepository = publicSportRepository;
         this.paymentService = paymentService;
+        this.courtBookingRepository = courtBookingRepository;
+        this.sportsCourtRepository = sportsCourtRepository;
     }
 
     @GetMapping
@@ -550,6 +581,42 @@ public class MemberProfileController {
                         "Cổng trung tâm F Sport Center"))
                 .toList();
 
+        List<MemberCourtBookingAttendanceResponse> courtBookings = new ArrayList<>();
+        if (courtBookingRepository != null) {
+            List<CourtBooking> memberCourts = courtBookingRepository.findByMemberIdOrderByStartTimeAsc(userId);
+            List<Long> courtIds = memberCourts.stream()
+                    .filter(cb -> !"CANCELLED".equalsIgnoreCase(cb.getStatus()))
+                    .map(CourtBooking::getCourtId)
+                    .distinct()
+                    .toList();
+            Map<Long, SportsCourt> courtMap = (sportsCourtRepository != null && !courtIds.isEmpty())
+                    ? sportsCourtRepository.findAllById(courtIds).stream()
+                            .collect(Collectors.toMap(SportsCourt::getCourtId, Function.identity()))
+                    : Map.of();
+
+            for (CourtBooking cb : memberCourts) {
+                if ("CANCELLED".equalsIgnoreCase(cb.getStatus())) continue;
+                SportsCourt court = courtMap.get(cb.getCourtId());
+                String courtName = court != null ? court.getCourtName() : "Sân #" + cb.getCourtId();
+                String sportName = court != null ? sportMap.getOrDefault(court.getSportId(), "Thể thao") : "Thể thao";
+                courtBookings.add(new MemberCourtBookingAttendanceResponse(
+                        cb.getCourtBookingId(),
+                        cb.getCourtId(),
+                        courtName,
+                        sportName,
+                        cb.getStartTime(),
+                        cb.getEndTime(),
+                        cb.getAmountPaid(),
+                        cb.getStatus()));
+            }
+            courtBookings.sort((a, b) -> {
+                if (a.startTime() == null && b.startTime() == null) return 0;
+                if (a.startTime() == null) return 1;
+                if (b.startTime() == null) return -1;
+                return b.startTime().compareTo(a.startTime());
+            });
+        }
+
         return new MemberAttendanceSummaryResponse(
                 records.size(),
                 attended,
@@ -557,7 +624,8 @@ public class MemberProfileController {
                 pending,
                 rate,
                 records,
-                gateCheckIns);
+                gateCheckIns,
+                courtBookings);
     }
 
     @GetMapping("/notifications")
@@ -686,6 +754,7 @@ public class MemberProfileController {
             case "COURT", "CLASS", "PT" -> bookingType.toUpperCase(Locale.ROOT);
             case "COURT_REFUND" -> "COURT";
             case "CLASS_REFUND" -> "CLASS";
+            case "PT_REFUND" -> "PT";
             case "MEMBERSHIP_REFUND" -> "MEMBERSHIP";
             default -> null;
         };
@@ -697,8 +766,10 @@ public class MemberProfileController {
             case "MEMBERSHIP_PACKAGE" -> "Thanh toán Gói Hội Viên";
             case "COURT" -> "Thuê Sân Thi Đấu Thể Thao";
             case "CLASS" -> "Đăng Ký Khóa Học Thể Thao";
+            case "PT" -> "Huấn Luyện Cá Nhân (PT 1-1)";
             case "COURT_REFUND" -> "Hoàn Tiền Hủy Thuê Sân (100%)";
             case "CLASS_REFUND" -> "Hoàn Tiền Hủy Lớp Học (100%)";
+            case "PT_REFUND" -> "Hoàn Tiền Hủy Buổi PT (100%)";
             default -> "Giao dịch hệ thống " + bookingType;
         };
     }

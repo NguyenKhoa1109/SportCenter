@@ -345,20 +345,27 @@ class ManagerControllerTest {
     }
 
     @Test
-    void receptionistCanCreateCoachUser() {
+    void receptionistCannotCreateCoachUserButCanCreateMemberUser() {
         var receptionistAuth = new UsernamePasswordAuthenticationToken(
                 "3", "", List.of(new SimpleGrantedAuthority("ROLE_RECEPTIONIST")));
-        com.sporthub.backend.dto.CreateUserRequest request = new com.sporthub.backend.dto.CreateUserRequest(
+        com.sporthub.backend.dto.CreateUserRequest coachRequest = new com.sporthub.backend.dto.CreateUserRequest(
                 "HLV Mới Tuyển", "coach.new@example.com", "0911222555", "SportHub@123", "COACH");
-        when(userRepository.existsByEmailIgnoreCase("coach.new@example.com")).thenReturn(false);
+        when(authService.findUserByEmail("coach.new@example.com")).thenReturn(Optional.empty());
+        var forbiddenEx = assertThrows(ResponseStatusException.class,
+                () -> controller.createUser(coachRequest, receptionistAuth));
+        assertEquals(403, forbiddenEx.getStatusCode().value());
+
+        com.sporthub.backend.dto.CreateUserRequest memberRequest = new com.sporthub.backend.dto.CreateUserRequest(
+                "Hội Viên Mới", "member.new@example.com", "0911222556", "SportHub@123", "MEMBER");
+        when(authService.findUserByEmail("member.new@example.com")).thenReturn(Optional.empty());
         when(userRepository.save(any(User.class))).thenAnswer(invocation -> {
             User u = invocation.getArgument(0);
             u.setUserId(100L);
             return u;
         });
 
-        var res = controller.createUser(request, receptionistAuth);
-        assertEquals("COACH", res.role());
+        var res = controller.createUser(memberRequest, receptionistAuth);
+        assertEquals("MEMBER", res.role());
         assertEquals("ACTIVE", res.status());
     }
 

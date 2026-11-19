@@ -461,8 +461,8 @@ public class ManagerController {
 
         boolean isManagerUser = isManager(authentication);
         if (!isManagerUser) {
-            if (!List.of("MEMBER", "COACH", "RECEPTIONIST").contains(targetRole)) {
-                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lễ tân chỉ có quyền tạo tài khoản Hội viên, Huấn luyện viên hoặc Lễ tân.");
+            if (!"MEMBER".equals(targetRole)) {
+                throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lễ tân chỉ được phép tạo tài khoản Hội viên (MEMBER).");
             }
         } else {
             if (!List.of("MEMBER", "COACH", "RECEPTIONIST", "MANAGER", "ADMIN").contains(targetRole)) {

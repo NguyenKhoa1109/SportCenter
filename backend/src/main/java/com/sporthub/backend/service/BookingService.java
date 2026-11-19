@@ -456,7 +456,8 @@ public class BookingService {
                 session.getEndTime(),
                 bookedCounts.getOrDefault(session.getSessionId(), 0L).intValue(),
                 session.getMaxSlots(),
-                session.getStatus())).toList();
+                session.getStatus(),
+                session.getPriceAmount())).toList();
     }
 
     @Transactional(readOnly = true)
@@ -1482,8 +1483,69 @@ public class BookingService {
         return saved;
     }
 
-    // ==================== CANCEL BOOKING METHODS (LUỒNG 1) ====================
-    
+    // ==================== CANCEL & RECEPTIONIST CLASS METHODS (LUỒNG 1) ====================
+
+    @Transactional
+    public BookingConfirmationResponse enrollMemberInClassByReceptionist(
+            Long sessionId,
+            Long memberId,
+            String paymentMethod,
+            Boolean useQuota,
+            String voucherCode,
+            Long actorId,
+            String actorRole) {
+        String normalizedRole = actorRole == null ? "" : actorRole.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("RECEPTIONIST", "MANAGER", "ADMIN").contains(normalizedRole)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền đăng ký lớp hộ hội viên.");
+        }
+        if (sessionId == null || memberId == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn lớp học và hội viên.");
+        }
+        userRepository.findById(memberId)
+                .filter(u -> "MEMBER".equalsIgnoreCase(u.getRole()))
+                .orElseThrow(() -> notFound("Không tìm thấy hội viên."));
+
+        boolean quota = Boolean.TRUE.equals(useQuota);
+        String effectiveMethod = quota ? null
+                : (paymentMethod == null || paymentMethod.isBlank() ? "CASH" : paymentMethod.trim().toUpperCase(Locale.ROOT));
+
+        BookingConfirmationResponse res = checkout(memberId,
+                new CheckoutRequest("CLASS", sessionId, null, null, effectiveMethod, quota, voucherCode));
+
+        if (!quota && ("CASH".equals(effectiveMethod) || "CASH_COUNTER".equals(effectiveMethod))) {
+            if (res.paymentId() != null) {
+                paymentTransactionRepository.findById(res.paymentId()).ifPresent(tx -> {
+                    tx.setPaymentStatus("PAID");
+                    tx.setPaymentCompletedAt(LocalDateTime.now());
+                    paymentTransactionRepository.save(tx);
+                });
+            }
+            if (res.bookingId() != null) {
+                bookingRepository.findById(res.bookingId()).ifPresent(b -> {
+                    b.setStatus("CONFIRMED");
+                    bookingRepository.save(b);
+                });
+            }
+            notifyMember(memberId, "Đăng ký lớp tại quầy thành công",
+                    "Lễ tân đã đăng ký lớp \"" + res.itemName() + "\" và xác nhận thu tiền mặt tại quầy.", "BOOKING");
+            res = new BookingConfirmationResponse(
+                    res.bookingType(), res.bookingId(), res.paymentId(), res.itemName(),
+                    res.sportName(), res.location(), res.startTime(), res.endTime(),
+                    res.amountPaid(), "PAID", res.referenceCode(),
+                    res.usedQuota(), res.quotaUsed(), res.quotaRemaining(), res.quotaMessage());
+        } else if (!quota && "VNPAY".equals(effectiveMethod)) {
+            notifyMember(memberId, "Lịch học đang chờ thanh toán",
+                    "Lễ tân đã giữ chỗ lớp \"" + res.itemName() + "\" cho bạn. Vui lòng hoàn tất thanh toán VNPay trong 10 phút.", "BOOKING");
+        }
+
+        if (engagementService != null) {
+            engagementService.audit(actorId, normalizedRole, "RECEPTION_CLASS_ENROLL",
+                    "sessionId=" + sessionId + ", memberId=" + memberId + ", bookingId=" + res.bookingId()
+                            + ", useQuota=" + quota + ", method=" + (quota ? "MEMBERSHIP_QUOTA" : effectiveMethod));
+        }
+        return res;
+    }
+
     /**
      * LUỒNG 1: Cancel CLASS booking (trước giờ học >= 2h) - Hoàn quota/hủy trực tiếp nếu không trả tiền, hoặc tạo RefundRequest nếu đã thanh toán
      */
@@ -1491,13 +1553,38 @@ public class BookingService {
     public CancelBookingResponse cancelClassBooking(Long bookingId, Long userId) {
         Booking booking = bookingRepository.findByIdForUpdate(bookingId).orElseThrow(() -> notFound("Không tìm thấy booking."));
         if (!booking.getMemberId().equals(userId)) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
+        return executeCancelClassBooking(booking);
+    }
+
+    @Transactional
+    public CancelBookingResponse cancelClassBookingByStaff(Long bookingId, Long actorId, String actorRole) {
+        String normalizedRole = actorRole == null ? "" : actorRole.trim().toUpperCase(Locale.ROOT);
+        if (!List.of("RECEPTIONIST", "MANAGER", "ADMIN").contains(normalizedRole)) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Bạn không có quyền hủy lớp hộ hội viên.");
+        }
+        Booking booking = bookingRepository.findByIdForUpdate(bookingId).orElseThrow(() -> notFound("Không tìm thấy booking."));
+        CancelBookingResponse response = executeCancelClassBooking(booking);
+        if (engagementService != null) {
+            engagementService.audit(actorId, normalizedRole, "RECEPTION_CLASS_CANCEL",
+                    "bookingId=" + bookingId + ", memberId=" + booking.getMemberId() + ", status=" + response.getStatus());
+        }
+        return response;
+    }
+
+    private CancelBookingResponse executeCancelClassBooking(Booking booking) {
+        Long bookingId = booking.getBookingId();
+        Long userId = booking.getMemberId();
         if ("CANCELLED".equals(booking.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Lịch đã hủy.");
         ClassSession session = classSessionRepository.findByIdForUpdate(booking.getSessionId()).orElseThrow(() -> notFound("Không tìm thấy buổi học."));
         if (!session.getStartTime().isAfter(LocalDateTime.now())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Buổi học đã bắt đầu.");
         if (booking.getAttendanceStatus() != null && booking.getAttendanceStatus() != AttendanceStatus.PENDING)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Buổi học đã được điểm danh.");
         boolean timely = !session.getStartTime().minusHours(2).isBefore(LocalDateTime.now()) || "CANCELLED".equals(session.getStatus()) || isSessionUnderMaintenance(session);
-        CancelBookingResponse response = cancellationResult("CLASS", bookingId, userId, booking.getPaymentId(), session.getClassName(), session.getStartTime(), timely);
+        boolean isPt = booking.getPaymentId() != null && paymentTransactionRepository.findById(booking.getPaymentId())
+                .map(p -> "PT".equalsIgnoreCase(p.getBookingType()))
+                .orElse(false);
+        String entryType = isPt ? "PT" : "CLASS";
+        CancelBookingResponse response = cancellationResult(entryType, bookingId, userId, booking.getPaymentId(), session.getClassName(), session.getStartTime(), timely);
         if ("PENDING_APPROVAL".equals(response.getStatus()) || "ALREADY_REQUESTED".equals(response.getStatus())) {
             return response;
         }
@@ -1507,8 +1594,8 @@ public class BookingService {
                 recordQuotaRefundTransaction(
                         userId,
                         booking.getPaymentId(),
-                        "CLASS_REFUND",
-                        "CLASS",
+                        isPt ? "PT_REFUND" : "CLASS_REFUND",
+                        entryType,
                         "Hoàn quota: " + session.getClassName());
                 response.setRefunded(true);
                 response.setRefundStatus(PaymentConstants.PAYMENT_STATUS_REFUNDED);
