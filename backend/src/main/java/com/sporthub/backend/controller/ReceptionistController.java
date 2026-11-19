@@ -6,6 +6,7 @@ import com.sporthub.backend.dto.ReceptionistMembershipSaleRequest;
 import com.sporthub.backend.dto.ReceptionistCheckInRequest;
 import com.sporthub.backend.dto.ReceptionistCheckInResponse;
 import com.sporthub.backend.dto.ReceptionistReportResponse;
+import com.sporthub.backend.entity.EquipmentLoan;
 import com.sporthub.backend.entity.MemberCheckIn;
 import com.sporthub.backend.entity.MembershipPackage;
 import com.sporthub.backend.entity.PaymentTransaction;
@@ -179,6 +180,25 @@ public class ReceptionistController {
                 .toList();
     }
 
+    // Keep the exception handler outside the service transaction: an ineligible
+    // preview rolls back validation locks without marking a caller transaction rollback-only.
+    @GetMapping("/check-in-eligibility")
+    public Map<String, Object> checkInEligibility(@RequestParam Long memberId,
+            @RequestParam(required = false) Long bookingId, Authentication authentication) {
+        requireStaff(authentication);
+        userRepository.findById(memberId)
+                .filter(user -> "MEMBER".equalsIgnoreCase(user.getRole()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy hội viên."));
+        try {
+            checkInService.validateCheckIn(memberId, bookingId);
+            return Map.of("eligible", true, "reason", "Lịch trong khung giờ hiện tại đã được kiểm tra thanh toán hoặc quyền sử dụng gói.");
+        } catch (ResponseStatusException exception) {
+            if (exception.getStatusCode().value() != 409) throw exception;
+            return Map.of("eligible", false, "reason", exception.getReason() == null
+                    ? "Chưa đủ điều kiện check-in." : exception.getReason());
+        }
+    }
+
     @PostMapping({"/check-ins", "/check-in"})
     @Transactional
     public ReceptionistCheckInResponse recordCheckIn(
@@ -305,6 +325,9 @@ public class ReceptionistController {
 
         // 1. Process payment_transactions first (richer transaction data with reference codes)
         for (PaymentTransaction tx : transactions) {
+            if ("MEMBERSHIP_QUOTA".equalsIgnoreCase(tx.getPaymentMethod())) {
+                continue;
+            }
             String id = tx.getReferenceCode() != null && !tx.getReferenceCode().isBlank()
                     ? tx.getReferenceCode()
                     : "trans-" + tx.getPaymentId();
@@ -320,7 +343,7 @@ public class ReceptionistController {
             // Find matching ReceptionPayment to prevent double counting
             for (ReceptionPayment rp : payments) {
                 if (matchedPaymentIds.contains(rp.getPaymentId())) continue;
-                boolean sameMember = rp.getMemberId() != null && rp.getMemberId().longValue() == tx.getMemberId();
+                boolean sameMember = rp.getMemberId() != null && Objects.equals(rp.getMemberId().longValue(), tx.getMemberId());
                 boolean sameAmount = rp.getAmount() != null && tx.getAmount() != null
                         && rp.getAmount().compareTo(tx.getAmount()) == 0;
                 boolean nearTime = rp.getCreatedAt() != null && tx.getCreatedAt() != null
@@ -347,6 +370,33 @@ public class ReceptionistController {
                     normalizeMethod(rp.getPaymentMethod()),
                     normalizeStatus(rp.getPaymentStatus()),
                     rp.getCreatedAt()));
+        }
+
+        // 3. Include paid equipment rentals collected on reportDate
+        if (equipmentLoanRepository != null) {
+            List<EquipmentLoan> returnedLoans = equipmentLoanRepository
+                    .findByStatusIgnoreCaseAndReturnedAtGreaterThanEqualAndReturnedAtLessThanOrderByReturnedAtDesc(
+                            "RETURNED", startOfDay, endOfDay);
+            if (returnedLoans != null) {
+                for (EquipmentLoan loan : returnedLoans) {
+                    if (loan.getReturnedAt() == null
+                            || loan.getRentalFee() == null
+                            || loan.getRentalFee().signum() <= 0) {
+                        continue;
+                    }
+                    String method = loan.getPaymentMethod() == null || loan.getPaymentMethod().isBlank()
+                            ? "CASH"
+                            : loan.getPaymentMethod();
+                    allPayments.add(new PaymentEntry(
+                            "equip-" + loan.getLoanId(),
+                            loan.getMemberId(),
+                            loan.getRentalFee(),
+                            normalizeMethod(method),
+                            "Hoàn tất",
+                            loan.getReturnedAt(),
+                            loan.getMemberName()));
+                }
+            }
         }
 
         List<PaymentEntry> completed = allPayments.stream()
@@ -383,15 +433,22 @@ public class ReceptionistController {
                     User member = payment.memberId() == null
                             ? null
                             : members.get(payment.memberId());
+                    String memberName = member != null
+                            ? member.getFullName()
+                            : (payment.fallbackMemberName() != null && !payment.fallbackMemberName().isBlank()
+                                    ? payment.fallbackMemberName()
+                                    : "Không rõ hội viên");
                     return new ReceptionistReportResponse.PaymentRecord(
                             payment.id(),
-                            member == null ? "Không rõ hội viên" : member.getFullName(),
+                            memberName,
                             payment.amount(),
                             payment.method(),
                             payment.status(),
                             payment.createdAt());
                 })
-                .sorted((left, right) -> right.createdAt().compareTo(left.createdAt()))
+                .sorted(java.util.Comparator.comparing(
+                        ReceptionistReportResponse.PaymentRecord::createdAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.reverseOrder())))
                 .toList();
 
         return new ReceptionistReportResponse(
@@ -642,14 +699,21 @@ public class ReceptionistController {
         }
 
         List<UserMembership> activeList = membershipRepository.findByUserIdOrderByEndDateDesc(uid).stream()
-                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus()) && (m.getEndDate() == null || !m.getEndDate().isBefore(today)))
+                .filter(m -> "ACTIVE".equalsIgnoreCase(m.getStatus())
+                        && m.getStartDate() != null && !m.getStartDate().isAfter(today)
+                        && m.getEndDate() != null && !m.getEndDate().isBefore(today))
                 .toList();
 
         String tier = "MEMBER";
+        com.sporthub.backend.enums.MembershipTier highestTier = null;
         List<Map<String, Object>> activePackages = new ArrayList<>();
         for (UserMembership m : activeList) {
             MembershipPackage pkg = packageRepository.findById(m.getPackageId()).orElse(null);
             String pkgName = pkg != null ? pkg.getName() : "Gói tập";
+            if (pkg != null && pkg.getMembershipTier() != null
+                    && (highestTier == null || pkg.getMembershipTier().ordinal() > highestTier.ordinal())) {
+                highestTier = pkg.getMembershipTier();
+            }
             if (pkgName.toUpperCase(Locale.ROOT).contains("VIP") || pkgName.toUpperCase(Locale.ROOT).contains("DIAMOND")
                     || (pkg != null && "ALL_ACCESS".equalsIgnoreCase(pkg.getAccessType()))) {
                 tier = "VIP";
@@ -663,6 +727,16 @@ public class ReceptionistController {
             row.put("startDate", m.getStartDate());
             row.put("endDate", m.getEndDate());
             row.put("daysRemaining", daysLeft);
+            if (pkg != null && pkg.getQuotaSessions() != null && pkg.getQuotaSessions() > 0) {
+                row.put("remainingSessions", m.getRemainingQuotaSessions());
+                row.put("heldSessions", m.getHeldQuotaSessions());
+                row.put("usedSessions", m.getUsedQuotaSessions());
+            }
+            if (pkg != null && pkg.getQuotaCourts() != null && pkg.getQuotaCourts() > 0) {
+                row.put("remainingCourtHours", m.getRemainingQuotaCourts());
+                row.put("heldCourtHours", m.getHeldQuotaCourts());
+                row.put("usedCourtHours", m.getUsedQuotaCourts());
+            }
             activePackages.add(row);
         }
 
@@ -685,6 +759,7 @@ public class ReceptionistController {
                         row.put("endTime", s.getEndTime());
                         row.put("status", b.getStatus());
                         row.put("attendanceStatus", b.getAttendanceStatus());
+                        row.put("usesMembershipQuota", b.getUsesMembershipQuota());
                         todayBookings.add(row);
                     }
                 }
@@ -697,11 +772,14 @@ public class ReceptionistController {
                     Map<String, Object> row = new LinkedHashMap<>();
                     row.put("bookingId", b.getCourtBookingId()); row.put("bookingType", "COURT");
                     row.put("courtName", "Sân #" + b.getCourtId()); row.put("startTime", b.getStartTime()); row.put("endTime", b.getEndTime());
+                    row.put("usesMembershipQuota", b.getUsesMembershipQuota());
                     row.put("status", b.getStatus()); todayBookings.add(row);
                 }
             }
         }
-        String tierBadge = "VIP".equals(tier) ? "HỘI VIÊN VIP" : "STANDARD".equals(tier) ? "HỘI VIÊN STANDARD" : "HỘI VIÊN MỚI";
+        String tierBadge = highestTier != null ? highestTier.getDisplayName().toUpperCase(Locale.ROOT)
+                : "VIP".equals(tier) ? "HỘI VIÊN VIP" : "STANDARD".equals(tier) ? "HỘI VIÊN STANDARD" : "HỘI VIÊN MỚI";
+        if (highestTier != null) tier = highestTier.name();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("userId", user.getUserId());
         result.put("fullName", user.getFullName());
@@ -730,12 +808,22 @@ public class ReceptionistController {
         List<ReceptionPayment> myPayments = paymentRepository != null ? paymentRepository.findAll().stream()
                 .filter(p -> p.getApprovedBy() != null && p.getApprovedBy().longValue() == id)
                 .toList() : List.of();
-        long salesHandled = myPayments.size();
+        List<EquipmentLoan> myEquipmentLoans = equipmentLoanRepository != null
+                ? equipmentLoanRepository.findByStatusIgnoreCaseOrderByLoanedAtDesc("RETURNED").stream()
+                        .filter(loan -> Objects.equals(loan.getRecordedBy(), id)
+                                && loan.getRentalFee() != null
+                                && loan.getRentalFee().signum() > 0)
+                        .toList()
+                : List.of();
+        long salesHandled = myPayments.size() + myEquipmentLoans.size();
         BigDecimal totalRevenueCollected = myPayments.stream()
                 .filter(p -> "COMPLETED".equalsIgnoreCase(p.getPaymentStatus()) || "PAID".equalsIgnoreCase(p.getPaymentStatus()))
                 .map(ReceptionPayment::getAmount)
                 .filter(Objects::nonNull)
-                .reduce(BigDecimal.ZERO, BigDecimal::add);
+                .reduce(BigDecimal.ZERO, BigDecimal::add)
+                .add(myEquipmentLoans.stream()
+                        .map(EquipmentLoan::getRentalFee)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add));
 
         String staffCode = "F-STAFF-" + String.format("%03d", staff.getUserId());
         return new ReceptionistProfileResponse(
@@ -840,7 +928,8 @@ public class ReceptionistController {
 
         long activeLoans = 0;
         if (equipmentLoanRepository != null) {
-            activeLoans = equipmentLoanRepository.findByStatusIgnoreCaseOrderByLoanedAtDesc("BORROWED").size();
+            activeLoans = equipmentLoanRepository.findByStatusIgnoreCaseOrderByLoanedAtDesc("BORROWED").size()
+                    + equipmentLoanRepository.findByStatusIgnoreCaseOrderByLoanedAtDesc("OVERDUE").size();
         }
 
         // Recent check-ins list (top 8)
@@ -964,6 +1053,16 @@ public class ReceptionistController {
             BigDecimal amount,
             String method,
             String status,
-            java.time.LocalDateTime createdAt) {
+            java.time.LocalDateTime createdAt,
+            String fallbackMemberName) {
+        private PaymentEntry(
+                String id,
+                Long memberId,
+                BigDecimal amount,
+                String method,
+                String status,
+                java.time.LocalDateTime createdAt) {
+            this(id, memberId, amount, method, status, createdAt, null);
+        }
     }
 }

@@ -56,6 +56,37 @@ class ReceptionistControllerTest {
                     "3", "", List.of(new SimpleGrantedAuthority("ROLE_RECEPTIONIST")));
 
     @Test
+    void eligibilityPreviewReturnsReasonFromAdmissionValidation() {
+        var service = mock(com.sporthub.backend.service.CheckInService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "checkInService", service);
+        when(userRepository.findById(9L)).thenReturn(java.util.Optional.of(
+                User.builder().userId(9L).role("MEMBER").status("ACTIVE").build()));
+        org.mockito.Mockito.doThrow(new org.springframework.web.server.ResponseStatusException(
+                org.springframework.http.HttpStatus.CONFLICT, "Chưa đúng giờ hoặc lịch đã kết thúc."))
+                .when(service).validateCheckIn(9L, null);
+
+        var result = controller.checkInEligibility(9L, null, receptionist);
+
+        assertEquals(false, result.get("eligible"));
+        assertEquals("Chưa đúng giờ hoặc lịch đã kết thúc.", result.get("reason"));
+        org.mockito.Mockito.verify(checkInRepository, org.mockito.Mockito.never()).save(any());
+    }
+
+    @Test
+    void eligibilityPreviewAllowsPaidBookingWithoutLookingForMembership() {
+        var service = mock(com.sporthub.backend.service.CheckInService.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "checkInService", service);
+        when(userRepository.findById(9L)).thenReturn(java.util.Optional.of(
+                User.builder().userId(9L).role("MEMBER").status("ACTIVE").build()));
+
+        var result = controller.checkInEligibility(9L, 25L, receptionist);
+
+        assertEquals(true, result.get("eligible"));
+        org.mockito.Mockito.verify(service).validateCheckIn(9L, 25L);
+        org.mockito.Mockito.verifyNoInteractions(membershipRepository, checkInRepository);
+    }
+
+    @Test
     void receptionEndpointRejectsCheckInWhenBookingValidationFails() {
         var checkInService = mock(com.sporthub.backend.service.CheckInService.class);
         org.springframework.test.util.ReflectionTestUtils.setField(controller, "checkInService", checkInService);
@@ -120,6 +151,14 @@ class ReceptionistControllerTest {
         bookingPayment.setPaymentStatus("PAID");
         bookingPayment.setCreatedAt(createdAt.plusMinutes(2));
 
+        PaymentTransaction quotaBooking = new PaymentTransaction();
+        quotaBooking.setPaymentId(4L);
+        quotaBooking.setMemberId(9L);
+        quotaBooking.setAmount(BigDecimal.ZERO);
+        quotaBooking.setPaymentMethod(PaymentConstants.METHOD_MEMBERSHIP_QUOTA);
+        quotaBooking.setPaymentStatus("PAID");
+        quotaBooking.setCreatedAt(createdAt.plusMinutes(3));
+
         User member = User.builder().userId(9L).fullName("Nguyễn Anh Khoa").build();
         when(paymentRepository
                 .findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
@@ -128,7 +167,7 @@ class ReceptionistControllerTest {
         when(paymentTransactionRepository
                 .findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
                         reportDate.atStartOfDay(), reportDate.plusDays(1).atStartOfDay()))
-                .thenReturn(List.of(bookingPayment));
+                .thenReturn(List.of(bookingPayment, quotaBooking));
         when(userRepository.findAllById(List.of(9L))).thenReturn(List.of(member));
         when(userRepository.countByRoleIgnoreCaseAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
                 "MEMBER", reportDate.atStartOfDay(), reportDate.plusDays(1).atStartOfDay()))
@@ -248,5 +287,157 @@ class ReceptionistControllerTest {
                         && "COACH".equals(u.getRole())
                         && u.getCoachedSports() != null
                         && u.getCoachedSports().stream().anyMatch(s -> Long.valueOf(6L).equals(s.getSportId()))));
+    }
+
+    @Test
+    void reportIncludesReturnedPaidEquipmentLoansAcrossCashAndVnpay() {
+        var equipmentLoanRepository = mock(com.sporthub.backend.repository.EquipmentLoanRepository.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "equipmentLoanRepository", equipmentLoanRepository);
+
+        LocalDate reportDate = LocalDate.of(2026, 10, 13);
+        LocalDateTime start = reportDate.atStartOfDay();
+        LocalDateTime end = reportDate.plusDays(1).atStartOfDay();
+
+        ReceptionPayment membershipPayment = new ReceptionPayment();
+        membershipPayment.setPaymentId(1);
+        membershipPayment.setMemberId(9);
+        membershipPayment.setAmount(new BigDecimal("100000"));
+        membershipPayment.setPaymentMethod("CASH");
+        membershipPayment.setPaymentStatus("COMPLETED");
+        membershipPayment.setCreatedAt(reportDate.atTime(9, 30));
+
+        var cashLoan = com.sporthub.backend.entity.EquipmentLoan.builder()
+                .loanId(501L)
+                .memberId(9L)
+                .memberName("Nguyễn Anh Khoa")
+                .rentalFee(new BigDecimal("60000"))
+                .paymentMethod("CASH")
+                .status("RETURNED")
+                .returnedAt(reportDate.atTime(10, 15))
+                .build();
+        var vnpayLoan = com.sporthub.backend.entity.EquipmentLoan.builder()
+                .loanId(502L)
+                .memberId(10L)
+                .memberName("Hoàng Thị Ngọc")
+                .rentalFee(new BigDecimal("40000"))
+                .paymentMethod("VNPAY")
+                .status("RETURNED")
+                .returnedAt(reportDate.atTime(11, 0))
+                .build();
+        var freeLoan = com.sporthub.backend.entity.EquipmentLoan.builder()
+                .loanId(503L)
+                .memberId(9L)
+                .memberName("Nguyễn Anh Khoa")
+                .rentalFee(BigDecimal.ZERO)
+                .paymentMethod("CASH")
+                .status("RETURNED")
+                .returnedAt(reportDate.atTime(11, 30))
+                .build();
+
+        when(paymentRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(start, end))
+                .thenReturn(List.of(membershipPayment));
+        when(paymentTransactionRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(start, end))
+                .thenReturn(List.of());
+        when(equipmentLoanRepository.findByStatusIgnoreCaseAndReturnedAtGreaterThanEqualAndReturnedAtLessThanOrderByReturnedAtDesc(
+                "RETURNED", start, end))
+                .thenReturn(List.of(cashLoan, vnpayLoan, freeLoan));
+        when(userRepository.findAllById(List.of(9L, 10L)))
+                .thenReturn(List.of(User.builder().userId(9L).fullName("Nguyễn Anh Khoa").build()));
+
+        var result = controller.getDailyReport(reportDate, receptionist);
+
+        assertEquals(new BigDecimal("200000"), result.totalRevenue());
+        assertEquals(3, result.completedPayments());
+        assertEquals(3, result.payments().size());
+        assertEquals("Hoàng Thị Ngọc", result.payments().get(0).memberName());
+        assertEquals("equip-502", result.payments().get(0).paymentId());
+        assertEquals(2, result.paymentMethods().size());
+        assertEquals(new BigDecimal("40000"), result.paymentMethods().get(0).amount());
+        assertEquals(1, result.paymentMethods().get(0).count());
+        assertEquals(new BigDecimal("160000"), result.paymentMethods().get(1).amount());
+        assertEquals(2, result.paymentMethods().get(1).count());
+    }
+
+    @Test
+    void dashboardOverviewIncludesOverdueInActiveLoansAndEquipmentRevenue() {
+        var equipmentLoanRepository = mock(com.sporthub.backend.repository.EquipmentLoanRepository.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "equipmentLoanRepository", equipmentLoanRepository);
+
+        LocalDate today = LocalDate.now();
+        LocalDateTime start = today.atStartOfDay();
+        LocalDateTime end = today.plusDays(1).atStartOfDay();
+
+        var returnedLoan = com.sporthub.backend.entity.EquipmentLoan.builder()
+                .loanId(601L)
+                .memberId(9L)
+                .memberName("Nguyễn Anh Khoa")
+                .rentalFee(new BigDecimal("90000"))
+                .paymentMethod("VNPAY")
+                .status("RETURNED")
+                .returnedAt(today.atTime(10, 0))
+                .build();
+        var borrowedLoan = com.sporthub.backend.entity.EquipmentLoan.builder()
+                .loanId(602L)
+                .status("BORROWED")
+                .build();
+        var overdueLoan = com.sporthub.backend.entity.EquipmentLoan.builder()
+                .loanId(603L)
+                .status("OVERDUE")
+                .build();
+
+        when(paymentRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(start, end))
+                .thenReturn(List.of());
+        when(paymentTransactionRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(start, end))
+                .thenReturn(List.of());
+        when(equipmentLoanRepository.findByStatusIgnoreCaseAndReturnedAtGreaterThanEqualAndReturnedAtLessThanOrderByReturnedAtDesc(
+                "RETURNED", start, end))
+                .thenReturn(List.of(returnedLoan));
+        when(equipmentLoanRepository.findByStatusIgnoreCaseOrderByLoanedAtDesc("BORROWED"))
+                .thenReturn(List.of(borrowedLoan));
+        when(equipmentLoanRepository.findByStatusIgnoreCaseOrderByLoanedAtDesc("OVERDUE"))
+                .thenReturn(List.of(overdueLoan));
+        when(userRepository.findAllById(any())).thenReturn(List.of());
+
+        var overview = controller.getDashboardOverview(receptionist);
+
+        assertEquals(new BigDecimal("90000"), overview.todayRevenue());
+        assertEquals(1L, overview.completedTransactionsCount());
+        assertEquals(2L, overview.activeLoansCount());
+    }
+
+    @Test
+    void getMyProfileIncludesReturnedEquipmentLoansRecordedByStaff() {
+        var equipmentLoanRepository = mock(com.sporthub.backend.repository.EquipmentLoanRepository.class);
+        org.springframework.test.util.ReflectionTestUtils.setField(controller, "equipmentLoanRepository", equipmentLoanRepository);
+
+        User staff = User.builder()
+                .userId(3L)
+                .fullName("Phạm Minh Tú")
+                .email("tu.receptionist@sporthub.vn")
+                .phone("0912345678")
+                .role("RECEPTIONIST")
+                .status("ACTIVE")
+                .build();
+        lenient().when(userRepository.findById(3L)).thenReturn(java.util.Optional.of(staff));
+
+        var myReturnedLoan = com.sporthub.backend.entity.EquipmentLoan.builder()
+                .loanId(701L)
+                .rentalFee(new BigDecimal("60000"))
+                .status("RETURNED")
+                .recordedBy(3L)
+                .build();
+        var otherStaffLoan = com.sporthub.backend.entity.EquipmentLoan.builder()
+                .loanId(702L)
+                .rentalFee(new BigDecimal("40000"))
+                .status("RETURNED")
+                .recordedBy(4L)
+                .build();
+        when(equipmentLoanRepository.findByStatusIgnoreCaseOrderByLoanedAtDesc("RETURNED"))
+                .thenReturn(List.of(myReturnedLoan, otherStaffLoan));
+
+        var profile = controller.getMyProfile(receptionist);
+
+        assertEquals(1L, profile.shiftStats().totalSalesHandled());
+        assertEquals(new BigDecimal("60000"), profile.shiftStats().totalRevenueCollected());
     }
 }

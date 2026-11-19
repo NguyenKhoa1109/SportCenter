@@ -9,5 +9,22 @@ public record ManagerPackageRequest(
         Integer durationDays,
         String accessType,
         String description,
-        String status) {
+        String status,
+        Integer quotaSessions,
+        Integer quotaCourts,
+        com.sporthub.backend.enums.MembershipTier membershipTier) {
+    public ManagerPackageRequest(String name, Long sportId, BigDecimal price, Integer durationDays,
+            String accessType, String description, String status, Integer quotaSessions, Integer quotaCourts) {
+        this(name, sportId, price, durationDays, accessType, description, status, quotaSessions, quotaCourts, null);
+    }
+    public ManagerPackageRequest(
+            String name,
+            Long sportId,
+            BigDecimal price,
+            Integer durationDays,
+            String accessType,
+            String description,
+            String status) {
+        this(name, sportId, price, durationDays, accessType, description, status, null, null);
+    }
 }

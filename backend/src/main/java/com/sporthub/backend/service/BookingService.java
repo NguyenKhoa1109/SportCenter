@@ -917,13 +917,14 @@ public class BookingService {
         }
         
         // 5. Find membership with quota (Rule: remaining_quota_sessions >= 1)
-        UserMembership membership = membershipService.getActiveMembershipWithQuota(memberId, 1, "CLASS", session.getSportId());
+        UserMembership membership = membershipService.getActiveMembershipWithQuota(memberId, 1, "CLASS", session.getSportId(), session.getStartTime(), session.getEndTime());
         if (membership == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                 "Không có gói membership còn quota. Vui lòng chọn thanh toán giá lẻ.");
         }
         
         // 6. Hold quota (remaining → held)
+        membershipService.requireBookingAccess(membership.getMembershipId(), session.getStartTime(), session.getEndTime());
         membershipService.holdQuota(membership.getMembershipId(), 1);
         
         // 6.5. Create 0đ payment transaction for quota tracking & refund support
@@ -962,6 +963,14 @@ public class BookingService {
         // 8. Update booked slots
         session.setBookedSlots((int) bookingRepository.countBySessionIdAndStatusIn(session.getSessionId(), ACTIVE_STATUSES));
         classSessionRepository.save(session);
+
+        notifyMember(
+                memberId,
+                "Đăng ký lớp bằng quota thành công",
+                String.format("Bạn đã đăng ký lớp \"%s\". Đã dùng 1 buổi quota (còn %d buổi).",
+                        session.getClassName(), membership.getRemainingQuotaSessions()),
+                "BOOKING"
+        );
         
         // 9. Return response with quota info
         return new BookingConfirmationResponse(
@@ -1020,13 +1029,14 @@ public class BookingService {
         }
 
         // 4. Find membership with quota
-        UserMembership membership = membershipService.getActiveMembershipWithQuota(memberId, 1, "PT", classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId()).stream().map(ClassSession::getSportId).filter(java.util.Objects::nonNull).findFirst().orElse(null));
+        UserMembership membership = membershipService.getActiveMembershipWithQuota(memberId, 1, "PT", classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId()).stream().map(ClassSession::getSportId).filter(java.util.Objects::nonNull).findFirst().orElse(null), start, end);
         if (membership == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                 "Không có gói membership còn quota. Vui lòng chọn thanh toán giá lẻ.");
         }
         
         // 5. Hold quota (remaining → held)
+        membershipService.requireBookingAccess(membership.getMembershipId(), start, end);
         membershipService.holdQuota(membership.getMembershipId(), 1);
 
         // 5.5. Create 0đ payment transaction for quota tracking
@@ -1080,6 +1090,14 @@ public class BookingService {
                 .coachNote("Buổi tập cá nhân 1-1 (Dùng quota)")
                 .build();
         Booking savedBooking = bookingRepository.save(booking);
+
+        notifyMember(
+                memberId,
+                "Đặt lịch PT bằng quota thành công",
+                String.format("Bạn đã đặt buổi \"%s\". Đã dùng 1 buổi quota (còn %d buổi).",
+                        savedSession.getClassName(), membership.getRemainingQuotaSessions()),
+                "BOOKING"
+        );
 
         // 8. Get display info
         PublicSport sport = publicSportRepository.findById(sportId).orElse(null);
@@ -1484,8 +1502,27 @@ public class BookingService {
             return response;
         }
         if (Boolean.TRUE.equals(booking.getUsesMembershipQuota()) && booking.getMembershipId() != null) {
-            if (timely) membershipService.refundQuotaForExcusedAbsence(booking.getMembershipId(), 1, session.getStartTime());
-            else membershipService.consumeQuota(booking.getMembershipId(), 1);
+            if (timely) {
+                membershipService.refundQuotaForExcusedAbsence(booking.getMembershipId(), 1, session.getStartTime());
+                recordQuotaRefundTransaction(
+                        userId,
+                        booking.getPaymentId(),
+                        "CLASS_REFUND",
+                        "CLASS",
+                        "Hoàn quota: " + session.getClassName());
+                response.setRefunded(true);
+                response.setRefundStatus(PaymentConstants.PAYMENT_STATUS_REFUNDED);
+                response.setPaymentMethod(PaymentConstants.METHOD_MEMBERSHIP_QUOTA);
+                response.setPaymentStatus(PaymentConstants.PAYMENT_STATUS_REFUNDED);
+                response.setMessage("Đã hủy \"" + session.getClassName() + "\" và hoàn 1 buổi quota.");
+                notifyMember(userId, "Hủy lớp & hoàn quota thành công", response.getMessage(), "REFUND");
+            } else {
+                membershipService.consumeQuota(booking.getMembershipId(), 1);
+                response.setRefundStatus("NONE");
+                response.setPaymentMethod(PaymentConstants.METHOD_MEMBERSHIP_QUOTA);
+                response.setMessage("Đã hủy \"" + session.getClassName() + "\" (hủy muộn dưới 2 giờ nên không hoàn 1 buổi quota).");
+                notifyMember(userId, "Đã hủy lớp học", response.getMessage(), "BOOKING");
+            }
             booking.setQuotaState(timely ? "RELEASED" : "USED");
         }
         booking.setStatus("CANCELLED"); bookingRepository.save(booking);
@@ -1508,9 +1545,31 @@ public class BookingService {
             return response;
         }
         if (Boolean.TRUE.equals(booking.getUsesMembershipQuota()) && booking.getMembershipId() != null) {
-            double hours = booking.getQuotaHoursUsed().doubleValue();
-            if (timely) membershipService.releaseCourtQuota(booking.getMembershipId(), hours);
-            else membershipService.consumeCourtQuota(booking.getMembershipId(), hours);
+            double hours = booking.getQuotaHoursUsed() != null
+                    ? booking.getQuotaHoursUsed().doubleValue()
+                    : Math.max(1.0, Duration.between(booking.getStartTime(), booking.getEndTime()).toMinutes() / 60.0);
+            if (timely) {
+                membershipService.releaseCourtQuota(booking.getMembershipId(), hours);
+                String refundDescription = String.format(Locale.US, "Hoàn quota: %s (%.1f giờ)", title, hours);
+                recordQuotaRefundTransaction(
+                        userId,
+                        booking.getPaymentId(),
+                        "COURT_REFUND",
+                        "COURT",
+                        refundDescription);
+                response.setRefunded(true);
+                response.setRefundStatus(PaymentConstants.PAYMENT_STATUS_REFUNDED);
+                response.setPaymentMethod(PaymentConstants.METHOD_MEMBERSHIP_QUOTA);
+                response.setPaymentStatus(PaymentConstants.PAYMENT_STATUS_REFUNDED);
+                response.setMessage(String.format(Locale.US, "Đã hủy %s và hoàn %.1f giờ quota.", title, hours));
+                notifyMember(userId, "Hủy sân & hoàn quota thành công", response.getMessage(), "REFUND");
+            } else {
+                membershipService.consumeCourtQuota(booking.getMembershipId(), hours);
+                response.setRefundStatus("NONE");
+                response.setPaymentMethod(PaymentConstants.METHOD_MEMBERSHIP_QUOTA);
+                response.setMessage(String.format(Locale.US, "Đã hủy %s (hủy muộn dưới 2 giờ nên không hoàn %.1f giờ quota).", title, hours));
+                notifyMember(userId, "Đã hủy đặt sân", response.getMessage(), "BOOKING");
+            }
             booking.setQuotaState(timely ? "RELEASED" : "USED");
         }
         booking.setStatus("CANCELLED"); courtBookingRepository.save(booking);
@@ -1781,7 +1840,7 @@ public class BookingService {
         }
         
         // 5. Get and validate membership with court quota
-        UserMembership membership = membershipService.getActiveMembershipWithCourtQuota(memberId, exactHours);
+        UserMembership membership = membershipService.getActiveMembershipWithCourtQuota(memberId, exactHours, request.startTime(), request.endTime());
         if (membership == null || membership.getRemainingQuotaCourts() < exactHours) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
                 String.format("Số giờ sân trong gói hội viên của bạn không đủ (cần %.1f giờ, hiện còn %d giờ). " +
@@ -1791,8 +1850,21 @@ public class BookingService {
         }
         
         // 6. Hold court quota
+        membershipService.requireBookingAccess(membership.getMembershipId(), request.startTime(), request.endTime());
         membershipService.holdCourtQuota(membership.getMembershipId(), exactHours);
-        
+
+        // 6.5. Create 0đ transaction for quota tracking & refund history
+        PublicSport sport = getActiveSport(court.getSportId());
+        String courtDescription = String.format(Locale.US, "%s - %s (%.1f giờ)",
+                court.getCourtName(), sport.getName(), exactHours);
+        PaymentTransaction payment = createPaymentTransaction(
+                memberId,
+                PaymentConstants.BOOKING_TYPE_COURT,
+                courtDescription,
+                BigDecimal.ZERO,
+                PaymentConstants.METHOD_MEMBERSHIP_QUOTA
+        );
+
         // 7. Create CourtBooking with quota flag
         CourtBooking booking = new CourtBooking();
         booking.setMemberId(memberId);
@@ -1801,7 +1873,7 @@ public class BookingService {
         booking.setEndTime(request.endTime());
         booking.setStatus("CONFIRMED");
         booking.setAmountPaid(BigDecimal.ZERO); // No payment for quota booking
-        booking.setPaymentId(null); // No payment needed
+        booking.setPaymentId(payment.getPaymentId());
         booking.setUsesMembershipQuota(true);
         booking.setQuotaState("HELD");
         booking.setMembershipId(membership.getMembershipId());
@@ -1816,41 +1888,95 @@ public class BookingService {
                 "COURT_BOOKING_QUOTA",
                 "CourtBooking#" + savedBooking.getCourtBookingId(),
                 memberId,
-                String.format("Booked court %s (%.1f hours) using membership court quota. Membership #%d held %.1f hours.",
+                String.format(Locale.US, "Booked court %s (%.1f hours) using membership court quota. Membership #%d held %.1f hours.",
                     court.getCourtName(), exactHours, membership.getMembershipId(), exactHours)
             );
         }
         
         // 9. Refresh membership to get updated quota
         UserMembership updatedMembership = userMembershipRepository.findById(membership.getMembershipId())
-                .orElseThrow();
+                .orElse(membership);
         
-        // 10. Get sport info
-        PublicSport sport = getActiveSport(court.getSportId());
-        
-        // 11. Return confirmation
-        String quotaMessage = String.format(
+        // 10. Return confirmation
+        String quotaMessage = String.format(Locale.US,
             "Đã dùng %.1f giờ court quota cho sân %s. Còn %d giờ.",
             exactHours, court.getCourtName(), 
             updatedMembership.getRemainingQuotaCourts());
+
+        notifyMember(
+                memberId,
+                "Đặt sân bằng quota thành công",
+                String.format("Bạn đã đặt %s. %s", court.getCourtName(), quotaMessage),
+                "BOOKING"
+        );
             
         return new BookingConfirmationResponse(
                 "COURT",
                 savedBooking.getCourtBookingId(),
-                null, // No payment
+                payment.getPaymentId(),
                 court.getCourtName(),
                 sport.getName(),
                 court.getDescription(),
                 savedBooking.getStartTime(),
                 savedBooking.getEndTime(),
                 BigDecimal.ZERO,
-                null, // No payment status
-                null, // No reference code
+                PaymentConstants.PAYMENT_STATUS_PAID,
+                payment.getReferenceCode(),
                 true, // usedQuota
                 (int) Math.ceil(exactHours), // quotaUsed
                 updatedMembership.getRemainingQuotaCourts(), // quotaRemaining
                 quotaMessage
         );
+    }
+
+    private void recordQuotaRefundTransaction(
+            Long memberId,
+            Long originalPaymentId,
+            String defaultBookingType,
+            String defaultItemType,
+            String itemDescription) {
+        if (paymentTransactionRepository == null) {
+            return;
+        }
+        PaymentTransaction originalPayment = originalPaymentId == null
+                ? null
+                : paymentTransactionRepository.findById(originalPaymentId).orElse(null);
+
+        String bookingType = defaultBookingType;
+        String itemType = defaultItemType;
+        if (originalPayment != null && "PT".equalsIgnoreCase(originalPayment.getBookingType())) {
+            bookingType = "PT_REFUND";
+            itemType = "PT";
+        }
+
+        String refCode;
+        if (originalPayment != null && originalPayment.getReferenceCode() != null && !originalPayment.getReferenceCode().isBlank()) {
+            String candidate = "REFUND_" + originalPayment.getReferenceCode().trim();
+            refCode = candidate.length() <= 64 ? candidate : candidate.substring(0, 64);
+        } else {
+            String prefix = "COURT_REFUND".equals(bookingType) ? "RFD-CRT" : "RFD-CLS";
+            refCode = prefix + "-" + UUID.randomUUID().toString().replace("-", "").substring(0, 10).toUpperCase(Locale.ROOT);
+        }
+
+        LocalDateTime now = LocalDateTime.now();
+        PaymentTransaction refundTransaction = new PaymentTransaction();
+        refundTransaction.setMemberId(memberId);
+        refundTransaction.setBookingType(bookingType);
+        refundTransaction.setItemType(itemType);
+        refundTransaction.setItemDescription(itemDescription);
+        refundTransaction.setAmount(BigDecimal.ZERO);
+        refundTransaction.setPaymentMethod(PaymentConstants.METHOD_MEMBERSHIP_QUOTA);
+        refundTransaction.setPaymentStatus(PaymentConstants.PAYMENT_STATUS_REFUNDED);
+        refundTransaction.setReferenceCode(refCode);
+        refundTransaction.setCreatedAt(now);
+        refundTransaction.setPaymentCompletedAt(now);
+        paymentTransactionRepository.save(refundTransaction);
+    }
+
+    private void notifyMember(Long userId, String title, String message, String type) {
+        if (engagementService != null && userId != null) {
+            engagementService.notifyUser(userId, title, message, type);
+        }
     }
 
     private ResponseStatusException notFound(String message) {

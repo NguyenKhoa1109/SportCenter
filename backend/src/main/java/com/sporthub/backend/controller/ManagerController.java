@@ -185,7 +185,11 @@ public class ManagerController {
         requireManager(authentication);
         validatePackage(request);
         MembershipPackage membershipPackage = new MembershipPackage();
+        if (request.membershipTier() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ tạo hạng Đồng, Bạc, Vàng hoặc Kim Cương.");
+        }
         applyPackageRequest(membershipPackage, request);
+        validateTierAvailability(membershipPackage);
         return packageRepository.save(membershipPackage);
     }
 
@@ -201,6 +205,7 @@ public class ManagerController {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Không tìm thấy gói tập."));
         applyPackageRequest(membershipPackage, request);
+        validateTierAvailability(membershipPackage);
         return packageRepository.save(membershipPackage);
     }
 
@@ -219,6 +224,7 @@ public class ManagerController {
                 .orElseThrow(() -> new ResponseStatusException(
                         HttpStatus.NOT_FOUND, "Không tìm thấy gói tập."));
         membershipPackage.setStatus(request.status().trim().toUpperCase(Locale.ROOT));
+        validateTierAvailability(membershipPackage);
         return packageRepository.save(membershipPackage);
     }
 
@@ -297,11 +303,13 @@ public class ManagerController {
 
             MembershipPackage pkg = packageRepository.findById(um.getPackageId()).orElse(null);
             row.put("packageName", pkg != null ? pkg.getName() : "Gói tập #" + um.getPackageId());
-            row.put("packageType", pkg != null ? pkg.getAccessType() : "VIP");
+            row.put("packageType", pkg != null && pkg.getPackageType() != null ? pkg.getPackageType().name() : "VIP");
+            row.put("accessType", pkg != null ? pkg.getAccessType() : "ALL_DAY");
+            row.put("membershipTier", pkg != null ? pkg.getMembershipTier() : null);
             row.put("price", pkg != null ? pkg.getPrice() : 0);
             row.put("paymentMethod", "VNPAY");
             row.put("referenceCode", "VNP-MBR-" + um.getMembershipId());
-            row.put("quotaCourtHours", pkg != null && pkg.getQuotaSessions() != null ? pkg.getQuotaSessions() : 0);
+            row.put("quotaCourtHours", pkg != null && pkg.getQuotaCourts() != null ? pkg.getQuotaCourts() : 0);
             row.put("quotaClassSessions", pkg != null && pkg.getQuotaSessions() != null ? pkg.getQuotaSessions() : 0);
             row.put("quotaPtSessions", 0);
             row.put("status", um.getStatus());
@@ -516,6 +524,9 @@ public class ManagerController {
     }
 
     private void validatePackage(ManagerPackageRequest request) {
+        if (request == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thông tin gói tập không hợp lệ.");
+        }
         if (request.name() == null || request.name().isBlank() || request.name().trim().length() > 100) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Tên gói tập là bắt buộc và tối đa 100 ký tự.");
@@ -537,17 +548,50 @@ public class ManagerController {
                 || !List.of("ACTIVE", "INACTIVE").contains(request.status().trim().toUpperCase(Locale.ROOT))) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái gói tập không hợp lệ.");
         }
+        if (request.quotaSessions() != null && request.quotaSessions() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số buổi tập không được âm.");
+        }
+        if (request.quotaCourts() != null && request.quotaCourts() < 0) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số giờ sân không được âm.");
+        }
         if (request.sportId() != null && !sportRepository.existsById(request.sportId())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không tìm thấy bộ môn đã chọn.");
         }
     }
 
+    private void validateTierAvailability(MembershipPackage membershipPackage) {
+        if (!"ACTIVE".equals(membershipPackage.getStatus())) return;
+        if (membershipPackage.getMembershipTier() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Gói cũ chỉ lưu lịch sử. Chọn hạng Đồng, Bạc, Vàng hoặc Kim Cương để mở bán.");
+        }
+        if (packageRepository.existsByMembershipTierAndStatusAndPackageIdNot(
+                membershipPackage.getMembershipTier(), "ACTIVE",
+                membershipPackage.getPackageId() == null ? -1L : membershipPackage.getPackageId())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Hạng này đã mở bán. Hãy cập nhật cấu hình hiện có.");
+        }
+    }
+
     private void applyPackageRequest(MembershipPackage membershipPackage, ManagerPackageRequest request) {
-        membershipPackage.setName(request.name().trim());
-        membershipPackage.setSportId(request.sportId());
+        if (request.membershipTier() != null) membershipPackage.setMembershipTier(request.membershipTier());
+        membershipPackage.setName(membershipPackage.getMembershipTier() == null
+                ? request.name().trim() : membershipPackage.getMembershipTier().getDisplayName());
+        if (membershipPackage.getMembershipTier() != null) {
+            membershipPackage.setPackageType(com.sporthub.backend.enums.PackageType.VIP);
+        }
+        membershipPackage.setSportId(membershipPackage.getMembershipTier() == null ? request.sportId() : null);
         membershipPackage.setPrice(request.price());
         membershipPackage.setDurationDays(request.durationDays());
         membershipPackage.setAccessType(request.accessType().trim().toUpperCase(Locale.ROOT));
+        if (request.quotaSessions() != null) {
+            membershipPackage.setQuotaSessions(request.quotaSessions());
+        } else if (membershipPackage.getQuotaSessions() == null) {
+            membershipPackage.setQuotaSessions(0);
+        }
+        if (request.quotaCourts() != null) {
+            membershipPackage.setQuotaCourts(request.quotaCourts());
+        } else if (membershipPackage.getQuotaCourts() == null) {
+            membershipPackage.setQuotaCourts(0);
+        }
         membershipPackage.setDescription(
                 request.description() == null || request.description().isBlank()
                         ? null

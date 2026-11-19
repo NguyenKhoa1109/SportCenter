@@ -197,7 +197,7 @@ public class FacilityManagementController {
             session.setEndTime(request.endTime().plusWeeks(index));
             session.setMaxSlots(request.maxSlots());
             session.setBookedSlots(0);
-            session.setPriceAmount(request.priceAmount() == null ? BigDecimal.ZERO : request.priceAmount());
+            session.setPriceAmount(request.priceAmount());
             session.setStatus("SCHEDULED");
             sessions.add(session);
         }
@@ -361,6 +361,9 @@ public class FacilityManagementController {
     }
 
     private void validateSession(CreateClassSessionRequest request) {
+        if (request.priceAmount() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập học phí mỗi buổi. Nhập 0 nếu lớp miễn phí.");
+        }
         if (request.sessionCount() == null || request.sessionCount() < 1 || request.sessionCount() > 52) {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST,

@@ -196,8 +196,15 @@ public class MembershipService {
 
     @Transactional(readOnly = true)
     public UserMembership getActiveMembershipWithQuota(Long userId, int requiredQuota, String type, Long sportId) {
+        return getActiveMembershipWithQuota(userId, requiredQuota, type, sportId, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public UserMembership getActiveMembershipWithQuota(Long userId, int requiredQuota, String type, Long sportId,
+            java.time.LocalDateTime start, java.time.LocalDateTime end) {
         return userMembershipRepository.findByUserIdAndStatus(userId, "ACTIVE").stream()
             .filter(this::isEffective)
+            .filter(m -> permitsBooking(m, start, end))
             .filter(m -> m.getRemainingQuotaSessions() != null && m.getRemainingQuotaSessions() >= requiredQuota)
             .filter(m -> {
                 MembershipPackage p = membershipPackageRepository.findById(m.getPackageId()).orElse(null);
@@ -212,6 +219,33 @@ public class MembershipService {
             .findFirst().orElse(null);
     }
 
+    private boolean permitsBooking(UserMembership membership, java.time.LocalDateTime start, java.time.LocalDateTime end) {
+        if (start == null && end == null) return true;
+        MembershipPackage pkg = membershipPackageRepository.findById(membership.getPackageId()).orElse(null);
+        if (pkg == null) return false;
+        if (pkg.getMembershipTier() == null) return true;
+        return MembershipAccessRules.permits(pkg.getAccessType(), start, end)
+                && !start.toLocalDate().isBefore(membership.getStartDate())
+                && !end.toLocalDate().isAfter(membership.getEndDate());
+    }
+
+    @Transactional(readOnly = true)
+    public void requireBookingAccess(Long membershipId, java.time.LocalDateTime start, java.time.LocalDateTime end) {
+        UserMembership membership = userMembershipRepository.findById(membershipId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy gói đã mua."));
+        MembershipPackage pkg = membershipPackageRepository.findById(membership.getPackageId()).orElseThrow();
+        // Historical contracts retain their existing rules; the tier catalog has explicit access windows.
+        if (pkg.getMembershipTier() == null) return;
+        if (!MembershipAccessRules.permits(pkg.getAccessType(), start, end)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Lịch ngoài khung giờ của hạng hội viên. Hạng Đồng và Bạc áp dụng 08:00–16:00; chọn lịch phù hợp hoặc thanh toán lẻ.");
+        }
+        if (membership.getStartDate() == null || membership.getEndDate() == null
+                || start.toLocalDate().isBefore(membership.getStartDate()) || end.toLocalDate().isAfter(membership.getEndDate())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Lịch tập nằm ngoài thời hạn hạng hội viên.");
+        }
+    }
+
     public boolean isEffective(UserMembership m) {
         LocalDate today = LocalDate.now();
         return "ACTIVE".equals(m.getStatus()) && m.getStartDate() != null && !m.getStartDate().isAfter(today)
@@ -219,6 +253,9 @@ public class MembershipService {
     }
 
     private boolean sameRenewalGroup(MembershipPackage a, MembershipPackage b) {
+        if (b != null && (a.getMembershipTier() != null || b.getMembershipTier() != null)) {
+            return a.getMembershipTier() != null && a.getMembershipTier() == b.getMembershipTier();
+        }
         return b != null && a.getPackageType() == b.getPackageType()
             && (a.getPackageType() == com.sporthub.backend.enums.PackageType.VIP || java.util.Objects.equals(a.getSportId(), b.getSportId()));
     }
@@ -563,10 +600,17 @@ public class MembershipService {
      */
     @Transactional(readOnly = true)
     public UserMembership getActiveMembershipWithCourtQuota(Long userId, double requiredHours) {
+        return getActiveMembershipWithCourtQuota(userId, requiredHours, null, null);
+    }
+
+    @Transactional(readOnly = true)
+    public UserMembership getActiveMembershipWithCourtQuota(Long userId, double requiredHours,
+            java.time.LocalDateTime start, java.time.LocalDateTime end) {
         List<UserMembership> memberships = userMembershipRepository.findByUserIdAndStatus(userId, "ACTIVE");
 
         return memberships.stream()
                 .filter(this::isEffective)
+                .filter(m -> permitsBooking(m, start, end))
                 .filter(m -> membershipPackageRepository.findById(m.getPackageId()).map(p -> p.getPackageType() == com.sporthub.backend.enums.PackageType.VIP).orElse(false))
                 .filter(m -> m.getRemainingQuotaCourts() != null && m.getRemainingQuotaCourts() >= requiredHours)
                 .sorted(java.util.Comparator.comparing(UserMembership::getEndDate).thenComparing(UserMembership::getMembershipId))

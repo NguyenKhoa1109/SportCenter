@@ -9,6 +9,33 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
 
 class MembershipServiceTest {
+    @Test
+    void onlyRenewingTheSameTierQueuesTheNewTerm() {
+        for (var oldTier : new com.sporthub.backend.enums.MembershipTier[] {
+                null, com.sporthub.backend.enums.MembershipTier.SILVER, com.sporthub.backend.enums.MembershipTier.GOLD }) {
+            var rows = mock(UserMembershipRepository.class);
+            var catalog = mock(MembershipPackageRepository.class);
+            var payments = mock(PaymentTransactionRepository.class);
+            var tierService = new MembershipService(rows, catalog, null, null, null);
+            org.springframework.test.util.ReflectionTestUtils.setField(tierService, "payments", payments);
+            var old = new UserMembership();
+            old.setMembershipId(1L); old.setUserId(9L); old.setPackageId(1L);
+            old.setEndDate(java.time.LocalDate.now().plusDays(20));
+            var purchased = new UserMembership();
+            purchased.setMembershipId(55L); purchased.setUserId(9L); purchased.setPackageId(8L); purchased.setStatus("PENDING_APPROVAL");
+            var paid = new PaymentTransaction(); paid.setMemberId(9L); paid.setPaymentStatus("PAID");
+            when(payments.findFirstByMembershipIdOrderByCreatedAtDesc(55L)).thenReturn(Optional.of(paid));
+            when(rows.findByIdForUpdate(55L)).thenReturn(Optional.of(purchased));
+            when(rows.findByUserIdAndStatus(9L, "ACTIVE")).thenReturn(java.util.List.of(old));
+            when(catalog.findById(1L)).thenReturn(Optional.of(MembershipPackage.builder().membershipTier(oldTier).build()));
+            when(catalog.findById(8L)).thenReturn(Optional.of(MembershipPackage.builder()
+                    .membershipTier(com.sporthub.backend.enums.MembershipTier.GOLD).durationDays(30).quotaSessions(20).quotaCourts(10).build()));
+            tierService.approveMembership(55L, 1L);
+            assertEquals(oldTier == com.sporthub.backend.enums.MembershipTier.GOLD
+                    ? old.getEndDate().plusDays(1) : java.time.LocalDate.now(), purchased.getStartDate());
+            assertEquals(purchased.getStartDate().plusDays(29), purchased.getEndDate());
+        }
+    }
     private final UserMembershipRepository memberships = mock(UserMembershipRepository.class);
     private final MembershipPackageRepository packages = mock(MembershipPackageRepository.class);
     private final MembershipService service = new MembershipService(memberships, packages, null, null, null);

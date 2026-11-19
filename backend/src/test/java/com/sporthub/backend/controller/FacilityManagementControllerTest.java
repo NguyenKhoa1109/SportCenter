@@ -43,6 +43,18 @@ class FacilityManagementControllerTest {
             "1", "", List.of(new SimpleGrantedAuthority("ROLE_MANAGER")));
 
     @Test
+    void classCreationRequiresAnExplicitTuitionAmount() {
+        var start = LocalDateTime.now().plusDays(1);
+        var request = new CreateClassSessionRequest("Lớp cầu lông", 3L, 9L, 7L,
+                start, start.plusHours(1), 1, 8, null);
+        var error = assertThrows(ResponseStatusException.class,
+                () -> controller.createClassSession(request, manager));
+        assertEquals(400, error.getStatusCode().value());
+        assertTrue(error.getReason().contains("Vui lòng nhập học phí"));
+        org.mockito.Mockito.verifyNoInteractions(facilityRepository, sportRepository, userRepository, classSessionRepository);
+    }
+
+    @Test
     void managerCanCreateWeeklySessionsMatchingTheConfiguredCount() {
         Facility facility = new Facility();
         facility.setFacilityId(7L);

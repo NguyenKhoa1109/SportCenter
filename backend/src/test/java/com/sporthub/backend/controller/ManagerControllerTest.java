@@ -1,11 +1,13 @@
 package com.sporthub.backend.controller;
 
 import com.sporthub.backend.entity.User;
+import com.sporthub.backend.entity.UserMembership;
 import com.sporthub.backend.entity.MembershipPackage;
 import com.sporthub.backend.entity.Sport;
 import com.sporthub.backend.repository.MembershipPackageRepository;
 import com.sporthub.backend.repository.PublicSportRepository;
 import com.sporthub.backend.repository.SportRepository;
+import com.sporthub.backend.repository.UserMembershipRepository;
 import com.sporthub.backend.repository.UserRepository;
 import com.sporthub.backend.service.AuditLogService;
 import com.sporthub.backend.service.EmailService;
@@ -18,6 +20,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.util.ReflectionTestUtils;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -129,28 +132,74 @@ class ManagerControllerTest {
     }
 
     @Test
+    void managerCanCreateBronzeForTheDemo() {
+        when(packageRepository.save(any(MembershipPackage.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        var request = new com.sporthub.backend.dto.ManagerPackageRequest(
+                "Hạng Đồng", null, new BigDecimal("400000"), 30, "OFF_PEAK", "Demo", "ACTIVE", 5, 2,
+                com.sporthub.backend.enums.MembershipTier.BRONZE);
+        var created = controller.createPackage(request, manager);
+        assertEquals("Hạng Đồng", created.getName());
+        assertEquals(com.sporthub.backend.enums.MembershipTier.BRONZE, created.getMembershipTier());
+        assertEquals(5, created.getQuotaSessions());
+        assertEquals(2, created.getQuotaCourts());
+    }
+
+    @Test
+    void managerCannotCreateDuplicateActiveTierOrAnUntieredPackage() {
+        var request = new com.sporthub.backend.dto.ManagerPackageRequest(
+                "Hạng Bạc", null, new BigDecimal("800000"), 30, "OFF_PEAK", "", "ACTIVE", 10, 5,
+                com.sporthub.backend.enums.MembershipTier.SILVER);
+        when(packageRepository.existsByMembershipTierAndStatusAndPackageIdNot(
+                com.sporthub.backend.enums.MembershipTier.SILVER, "ACTIVE", -1L)).thenReturn(true);
+        assertEquals(409, assertThrows(ResponseStatusException.class,
+                () -> controller.createPackage(request, manager)).getStatusCode().value());
+        assertEquals(400, assertThrows(ResponseStatusException.class,
+                () -> controller.createPackage(new com.sporthub.backend.dto.ManagerPackageRequest(
+                        "Gói PT lẻ", null, new BigDecimal("100000"), 30, "ALL_DAY", "", "ACTIVE"), manager)).getStatusCode().value());
+    }
+
+    @Test
     void managerCanCreateAndUpdateDatabasePackage() {
         when(packageRepository.save(any(MembershipPackage.class)))
                 .thenAnswer(invocation -> invocation.getArgument(0));
         var request = new com.sporthub.backend.dto.ManagerPackageRequest(
                 "Gold Fitness", null, new BigDecimal("2500000"), 90,
-                "ALL_DAY", "Gym membership", "ACTIVE");
+                "ALL_DAY", "Gym membership", "ACTIVE", 12, 6, com.sporthub.backend.enums.MembershipTier.GOLD);
 
         var created = controller.createPackage(request, manager);
 
-        assertEquals("Gold Fitness", created.getName());
+        assertEquals("Hạng Vàng", created.getName());
         assertEquals(new BigDecimal("2500000"), created.getPrice());
         assertEquals(90, created.getDurationDays());
+        assertEquals(12, created.getQuotaSessions());
+        assertEquals(6, created.getQuotaCourts());
 
         created.setPackageId(4L);
         when(packageRepository.findById(4L)).thenReturn(Optional.of(created));
         var update = new com.sporthub.backend.dto.ManagerPackageRequest(
                 "Gold Fitness Plus", null, new BigDecimal("3000000"), 120,
-                "PEAK", "Updated", "ACTIVE");
+                "PEAK", "Updated", "ACTIVE", 20, 8);
         var updated = controller.updatePackage(4L, update, manager);
 
-        assertEquals("Gold Fitness Plus", updated.getName());
+        assertEquals("Hạng Vàng", updated.getName());
         assertEquals("PEAK", updated.getAccessType());
+        assertEquals(20, updated.getQuotaSessions());
+        assertEquals(8, updated.getQuotaCourts());
+
+        // Null quotas on legacy update keep existing quota values; zero explicitly resets to 0
+        var legacyUpdate = new com.sporthub.backend.dto.ManagerPackageRequest(
+                "Gold Fitness Legacy", null, new BigDecimal("3000000"), 120,
+                "PEAK", "Updated", "ACTIVE");
+        var legacyUpdated = controller.updatePackage(4L, legacyUpdate, manager);
+        assertEquals(20, legacyUpdated.getQuotaSessions());
+        assertEquals(8, legacyUpdated.getQuotaCourts());
+
+        var resetZeroUpdate = new com.sporthub.backend.dto.ManagerPackageRequest(
+                "Gold Fitness Zero", null, new BigDecimal("3000000"), 120,
+                "PEAK", "Updated", "ACTIVE", 0, 0);
+        var resetUpdated = controller.updatePackage(4L, resetZeroUpdate, manager);
+        assertEquals(0, resetUpdated.getQuotaSessions());
+        assertEquals(0, resetUpdated.getQuotaCourts());
     }
 
     @Test
@@ -160,8 +209,60 @@ class ManagerControllerTest {
                 new com.sporthub.backend.dto.ManagerPackageRequest(
                         "", null, new BigDecimal("100"), 30, "ALL_DAY", "", "ACTIVE"),
                 manager));
+        assertEquals(400, assertThrows(ResponseStatusException.class, () -> controller.createPackage(
+                new com.sporthub.backend.dto.ManagerPackageRequest(
+                        "Invalid Session Quota", null, new BigDecimal("100"), 30,
+                        "ALL_DAY", "", "ACTIVE", -1, 0),
+                manager)).getStatusCode().value());
+        assertEquals(400, assertThrows(ResponseStatusException.class, () -> controller.createPackage(
+                new com.sporthub.backend.dto.ManagerPackageRequest(
+                        "Invalid Court Quota", null, new BigDecimal("100"), 30,
+                        "ALL_DAY", "", "ACTIVE", 0, -2),
+                manager)).getStatusCode().value());
         assertThrows(ResponseStatusException.class, () -> controller.updatePackageStatus(
                 1L, new ManagerController.PackageStatusRequest("DELETED"), manager));
+    }
+
+    @Test
+    void pendingMembershipsExposeQuotaCourtsAsQuotaCourtHours() {
+        UserMembershipRepository userMembershipRepository = mock(UserMembershipRepository.class);
+        ReflectionTestUtils.setField(controller, "userMembershipRepository", userMembershipRepository);
+
+        UserMembership pending = new UserMembership();
+        pending.setMembershipId(11L);
+        pending.setUserId(22L);
+        pending.setPackageId(33L);
+        pending.setStatus("PENDING_APPROVAL");
+        pending.setStartDate(LocalDate.of(2026, 11, 19));
+
+        User member = User.builder()
+                .userId(22L)
+                .fullName("Hội Viên A")
+                .email("member.a@example.com")
+                .phone("0901234567")
+                .role("MEMBER")
+                .status("ACTIVE")
+                .build();
+
+        MembershipPackage pkg = MembershipPackage.builder()
+                .packageId(33L)
+                .name("Gói VIP Sân & Lớp")
+                .accessType("ALL_DAY")
+                .price(new BigDecimal("1500000"))
+                .durationDays(30)
+                .quotaSessions(12)
+                .quotaCourts(5)
+                .build();
+
+        when(userMembershipRepository.findAll()).thenReturn(List.of(pending));
+        when(userRepository.findById(22L)).thenReturn(Optional.of(member));
+        when(packageRepository.findById(33L)).thenReturn(Optional.of(pkg));
+
+        var rows = controller.getPendingMemberships(manager);
+
+        assertEquals(1, rows.size());
+        assertEquals(5, rows.getFirst().get("quotaCourtHours"));
+        assertEquals(12, rows.getFirst().get("quotaClassSessions"));
     }
 
     @Test

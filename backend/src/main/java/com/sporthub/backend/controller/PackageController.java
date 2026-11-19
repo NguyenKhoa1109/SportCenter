@@ -39,6 +39,15 @@ public class PackageController {
         if (!isManager) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Chỉ Quản lý mới được tạo gói tập.");
         }
+        if (newPackage.getMembershipTier() == null) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ tạo hạng Đồng, Bạc, Vàng hoặc Kim Cương.");
+        }
+        newPackage.setName(newPackage.getMembershipTier().getDisplayName());
+        newPackage.setPackageType(com.sporthub.backend.enums.PackageType.VIP);
+        newPackage.setSportId(null);
+        if (packageRepository.existsByMembershipTierAndStatusAndPackageIdNot(newPackage.getMembershipTier(), "ACTIVE", -1L)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Hạng này đã mở bán. Hãy cập nhật cấu hình hiện có.");
+        }
         MembershipPackage saved = packageRepository.save(newPackage);
         return ResponseEntity.ok(saved);
     }

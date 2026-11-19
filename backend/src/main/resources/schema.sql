@@ -416,29 +416,25 @@ SET IDENTITY_INSERT dbo.public_facilities OFF;');
 
 IF OBJECT_ID(N'dbo.facilities', N'U') IS NOT NULL
    AND OBJECT_ID(N'dbo.public_facilities', N'U') IS NOT NULL
-BEGIN
-    IF NOT EXISTS (SELECT 1 FROM dbo.facilities WHERE facility_id = 31)
-    BEGIN
-        SET IDENTITY_INSERT dbo.facilities ON;
-        INSERT INTO dbo.facilities (facility_id, facility_name, sport_id, capacity, status) VALUES
-        (31, N'Phòng Tập Gym & Cardio - Khu G1', 1, 30, 'AVAILABLE'),
-        (32, N'Phòng Tập Thể Lực & Tạ - Khu G2', 1, 25, 'AVAILABLE'),
-        (33, N'Phòng Tập Yoga Studio - Phòng Y1', 4, 20, 'AVAILABLE'),
-        (34, N'Phòng Tập Pilates Reformer - Phòng Y2', 4, 15, 'AVAILABLE');
-        SET IDENTITY_INSERT dbo.facilities OFF;
-    END;
+   AND NOT EXISTS (SELECT 1 FROM dbo.facilities WHERE facility_id = 31)
+EXEC(N'SET IDENTITY_INSERT dbo.facilities ON;
+INSERT INTO dbo.facilities (facility_id, facility_name, sport_id, capacity, status) VALUES
+(31, N''Phòng Tập Gym & Cardio - Khu G1'', 1, 30, ''AVAILABLE''),
+(32, N''Phòng Tập Thể Lực & Tạ - Khu G2'', 1, 25, ''AVAILABLE''),
+(33, N''Phòng Tập Yoga Studio - Phòng Y1'', 4, 20, ''AVAILABLE''),
+(34, N''Phòng Tập Pilates Reformer - Phòng Y2'', 4, 15, ''AVAILABLE'');
+SET IDENTITY_INSERT dbo.facilities OFF;');
 
-    IF NOT EXISTS (SELECT 1 FROM dbo.public_facilities WHERE facility_id = 31)
-    BEGIN
-        SET IDENTITY_INSERT dbo.public_facilities ON;
-        INSERT INTO dbo.public_facilities (facility_id, slug, name, description, icon, highlight, active) VALUES
-        (31, N'booking-gym-01', N'Phòng Tập Gym & Cardio - Khu G1', N'Phòng tập Gym hiện đại trang bị máy Technogym và khu Cardio.', N'fitness_center', N'Trang thiết bị Ý', 1),
-        (32, N'booking-gym-02', N'Phòng Tập Thể Lực & Tạ - Khu G2', N'Khu tạ tự do chuẩn Olympic và rèn luyện thể lực chuyên sâu.', N'fitness_center', N'Tạ tự do Olympic', 1),
-        (33, N'booking-yoga-01', N'Phòng Tập Yoga Studio - Phòng Y1', N'Studio Yoga yên tĩnh tiêu chuẩn, có thảm định tuyến chuyên dụng.', N'self_improvement', N'Studio cách âm', 1),
-        (34, N'booking-yoga-02', N'Phòng Tập Pilates Reformer - Phòng Y2', N'Phòng tập Pilates máy Reformer cao cấp phục vụ lớp kèm và nhóm.', N'self_improvement', N'Máy Reformer cao cấp', 1);
-        SET IDENTITY_INSERT dbo.public_facilities OFF;
-    END;
-END;
+IF OBJECT_ID(N'dbo.facilities', N'U') IS NOT NULL
+   AND OBJECT_ID(N'dbo.public_facilities', N'U') IS NOT NULL
+   AND NOT EXISTS (SELECT 1 FROM dbo.public_facilities WHERE facility_id = 31)
+EXEC(N'SET IDENTITY_INSERT dbo.public_facilities ON;
+INSERT INTO dbo.public_facilities (facility_id, slug, name, description, icon, highlight, active) VALUES
+(31, N''booking-gym-01'', N''Phòng Tập Gym & Cardio - Khu G1'', N''Phòng tập Gym hiện đại trang bị máy Technogym và khu Cardio.'', N''fitness_center'', N''Trang thiết bị Ý'', 1),
+(32, N''booking-gym-02'', N''Phòng Tập Thể Lực & Tạ - Khu G2'', N''Khu tạ tự do chuẩn Olympic và rèn luyện thể lực chuyên sâu.'', N''fitness_center'', N''Tạ tự do Olympic'', 1),
+(33, N''booking-yoga-01'', N''Phòng Tập Yoga Studio - Phòng Y1'', N''Studio Yoga yên tĩnh tiêu chuẩn, có thảm định tuyến chuyên dụng.'', N''self_improvement'', N''Studio cách âm'', 1),
+(34, N''booking-yoga-02'', N''Phòng Tập Pilates Reformer - Phòng Y2'', N''Phòng tập Pilates máy Reformer cao cấp phục vụ lớp kèm và nhóm.'', N''self_improvement'', N''Máy Reformer cao cấp'', 1);
+SET IDENTITY_INSERT dbo.public_facilities OFF;');
 
 WITH class_seed AS (
     SELECT *
@@ -946,6 +942,10 @@ IF OBJECT_ID(N'dbo.users', N'U') IS NOT NULL
     ALTER TABLE dbo.users ADD require_password_change BIT NOT NULL CONSTRAINT DF_users_require_pw_change DEFAULT 0;
 
 -- ===== Bo sung: membership_packages.package_type, quota_sessions, quota_courts =====
+IF OBJECT_ID(N'dbo.membership_packages', N'U') IS NOT NULL
+   AND COL_LENGTH(N'dbo.membership_packages', N'membership_tier') IS NULL
+    ALTER TABLE dbo.membership_packages ADD membership_tier NVARCHAR(20) NULL;
+
 IF OBJECT_ID(N'dbo.membership_packages', N'U') IS NOT NULL
    AND COL_LENGTH(N'dbo.membership_packages', N'package_type') IS NULL
     ALTER TABLE dbo.membership_packages ADD package_type NVARCHAR(20) NULL CONSTRAINT DF_packages_package_type DEFAULT 'VIP';

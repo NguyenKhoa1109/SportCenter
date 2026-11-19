@@ -231,7 +231,8 @@ public class MemberProfileController {
                             membership.getStatus(),
                             membership.getPackageId(),
                             transaction == null ? null : transaction.getPaymentId(),
-                            transaction == null ? null : transaction.getPaymentMethod());
+                            transaction == null ? null : transaction.getPaymentMethod(),
+                            membershipPackage == null ? null : membershipPackage.getMembershipTier());
                 })
                 .toList();
     }
@@ -326,10 +327,15 @@ public class MemberProfileController {
 
         List<Map<String, Object>> activePackageList = new ArrayList<>();
         boolean isVip = false;
+        com.sporthub.backend.enums.MembershipTier highestTier = null;
 
         for (UserMembership m : activeMemberships) {
             MembershipPackage pkg = packageRepository.findById(m.getPackageId()).orElse(null);
             String pkgName = pkg != null ? pkg.getName() : "Gói tập";
+            if (pkg != null && pkg.getMembershipTier() != null
+                    && (highestTier == null || pkg.getMembershipTier().ordinal() > highestTier.ordinal())) {
+                highestTier = pkg.getMembershipTier();
+            }
             if (pkg != null && pkg.getPackageType() == com.sporthub.backend.enums.PackageType.VIP) {
                 isVip = true;
             }
@@ -346,7 +352,10 @@ public class MemberProfileController {
 
         String tier;
         String tierBadge;
-        if (isVip) {
+        if (highestTier != null) {
+            tier = highestTier.name();
+            tierBadge = highestTier.getDisplayName().toUpperCase(java.util.Locale.ROOT);
+        } else if (isVip) {
             tier = "VIP";
             tierBadge = "HỘI VIÊN VIP";
         } else if (!activePackageList.isEmpty()) {
@@ -592,7 +601,7 @@ public class MemberProfileController {
                     "pkg-none",
                     "MEMBERSHIP_EXPIRY",
                     "Khám phá các gói hội viên F Sport",
-                    "Bạn chưa kích hoạt gói tập nào. Hãy chọn gói Basic, Silver, Gold hoặc VIP để trải nghiệm trọn vẹn dịch vụ.",
+                    "Bạn chưa kích hoạt gói tập nào. Hãy chọn hạng Đồng, Bạc, Vàng hoặc Kim Cương để bắt đầu sử dụng quyền lợi hội viên.",
                     LocalDateTime.now().minusHours(12),
                     false,
                     "/member/packages"));
