@@ -82,12 +82,13 @@ test.describe('SUITE 1: Kiểm Thử Toàn Bộ 59 Routes & Phân Quyền 5 Vai 
     }
   });
 
-  test('4. Coach Portal: Khảo sát 8 routes huấn luyện viên & không phát sinh lỗi', async ({ page }) => {
+  test('4. Coach Portal: Khảo sát 9 routes huấn luyện viên & không phát sinh lỗi', async ({ page }) => {
     await loginCoach(page);
     const audit = setupAudit(page, 'COACH');
     const coachRoutes = [
       ['/coach', 'Dashboard'],
       ['/coach/schedule', 'Schedule'],
+      ['/coach/leave', 'Leave'],
       ['/coach/students', 'Students'],
       ['/coach/attendance', 'Attendance'],
       ['/coach/income', 'Income'],

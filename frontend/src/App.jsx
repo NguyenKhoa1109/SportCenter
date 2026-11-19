@@ -40,6 +40,8 @@ import ReceptionProfilePage from './pages/receptionist/ReceptionProfilePage';
 // Coach Portal Pages (Chỉ giữ các trang đã tạo)
 import CoachDashboardPage from './pages/coach/CoachDashboardPage';
 import CoachSchedulePage from './pages/coach/CoachSchedulePage';
+import CoachLeavePage from './pages/coach/CoachLeavePage';
+import CoachIncomePage from './pages/coach/CoachIncomePage';
 import CoachStudentsPage from './pages/coach/CoachStudentsPage';
 import CoachAttendancePage from './pages/coach/CoachAttendancePage';
 import CoachProfilePage from './pages/coach/CoachProfilePage';
@@ -50,6 +52,7 @@ import AdminMembersPage from './pages/admin/AdminMembersPage';
 import AdminStaffPage from './pages/admin/AdminStaffPage';
 import AdminStaffApprovalsPage from './pages/admin/AdminStaffApprovalsPage';
 import AdminFacilitiesPage from './pages/admin/AdminFacilitiesPage';
+import AdminCreateClassPage from './pages/admin/AdminCreateClassPage';
 import AdminPackagesPage from './pages/admin/AdminPackagesPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
 
@@ -140,9 +143,11 @@ function App() {
           {/* Coach Routes */}
           <Route path="/coach" element={<RequireRole role="coach"><CoachDashboardPage /></RequireRole>} />
           <Route path="/coach/schedule" element={<RequireRole role="coach"><CoachSchedulePage /></RequireRole>} />
+          <Route path="/coach/leave" element={<RequireRole role="coach"><CoachLeavePage /></RequireRole>} />
+          <Route path="/coach/leave-requests" element={<Navigate to="/coach/leave" replace />} />
           <Route path="/coach/students" element={<RequireRole role="coach"><CoachStudentsPage /></RequireRole>} />
           <Route path="/coach/attendance" element={<RequireRole role="coach"><CoachAttendancePage /></RequireRole>} />
-          <Route path="/coach/income" element={<RequireRole role="coach"><CoachSchedulePage initialTab="income" /></RequireRole>} />
+          <Route path="/coach/income" element={<RequireRole role="coach"><CoachIncomePage /></RequireRole>} />
 
           <Route path="/coach/notifications" element={<RequireRole role="coach"><CoachNotificationsPage /></RequireRole>} />
           <Route path="/coach/reviews" element={<RequireRole role="coach"><CoachReviewsPage /></RequireRole>} />
@@ -153,6 +158,7 @@ function App() {
           <Route path="/admin/staff" element={<RequireRole role="admin"><AdminStaffPage /></RequireRole>} />
           <Route path="/admin/staff-approvals" element={<RequireRole role="admin"><AdminStaffApprovalsPage /></RequireRole>} />
           <Route path="/admin/facilities" element={<RequireRole role="admin"><AdminFacilitiesPage /></RequireRole>} />
+          <Route path="/admin/classes/new" element={<RequireRole role="admin"><AdminCreateClassPage /></RequireRole>} />
           <Route path="/admin/packages" element={<RequireRole role="admin"><AdminPackagesPage /></RequireRole>} />
           <Route path="/admin/settings" element={<RequireRole role="admin"><AdminSettingsPage /></RequireRole>} />
 
