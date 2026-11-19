@@ -58,7 +58,14 @@ export default function ReceptionistLayout({ children }) {
       path: '/receptionist/classes',
       icon: 'calendar_month',
       section: 'Hội viên & Vận hành ca',
-      subtitle: 'Theo dõi lịch lớp học và danh sách học viên',
+      subtitle: 'Theo dõi lịch lớp học, đăng ký hộ và hủy lớp học viên',
+    },
+    {
+      label: 'Hỗ trợ & Khiếu nại',
+      path: '/reception/tickets',
+      icon: 'support_agent',
+      section: 'Hội viên & Vận hành ca',
+      subtitle: 'Tiếp nhận, tạo mới và xử lý ticket khiếu nại hội viên',
     },
     {
       label: 'Báo cáo ca trực & Doanh thu',

@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { useApp } from '../../context/AppContext';
-import { getAuditLogs } from '../../services/engagementApi';
+import { getAuditLogs, getSystemSettings, updateSystemSettings } from '../../services/engagementApi';
 import { getAiConfig, updateAiConfig } from '../../services/managerApi';
-import { apiRequest } from '../../services/apiClient';
 
 // Initial Mock System Policies
 const INITIAL_POLICIES = {
@@ -129,7 +128,7 @@ export default function AdminSettingsPage() {
   // Load Policies & Permissions from Database (MGR-14 / MGR-02)
   useEffect(() => {
     let active = true;
-    apiRequest('/manager/settings')
+    getSystemSettings()
       .then((data) => {
         if (!active || !data) return;
         if (data.policies) {
@@ -212,14 +211,14 @@ export default function AdminSettingsPage() {
           const dbLogs = data.map((item) => ({
             id: `db-${item.logId}`,
             timestamp: item.createdAt || new Date().toISOString(),
-            userName: item.actorName || (item.actorId ? `User #${item.actorId}` : 'Hệ thống'),
+            userName: item.actorName || item.userEmail || (item.actorId ? `User #${item.actorId}` : 'Hệ thống'),
             userRole: item.actorRole || 'SYSTEM',
-            action: item.action,
-            entity: 'DATABASE',
+            action: item.action || item.logType || 'SYSTEM',
+            entity: item.logType || 'DATABASE',
             entityId: `#${item.logId}`,
-            description: item.detail || item.action,
-            ipAddress: '127.0.0.1 (DB)',
-            status: 'SUCCESS',
+            description: item.detail || item.actionDetail || item.action || 'Không có mô tả',
+            ipAddress: item.ipAddress || '127.0.0.1 (DB)',
+            status: item.status || 'SUCCESS',
             isDbRecord: true,
           }));
           setAuditLogs(dbLogs);
@@ -240,10 +239,7 @@ export default function AdminSettingsPage() {
   const savePolicies = async (e) => {
     e.preventDefault();
     try {
-      await apiRequest('/manager/settings', {
-        method: 'PUT',
-        body: JSON.stringify({ policies }),
-      });
+      await updateSystemSettings({ policies });
       showToast('Thành công', 'Đã lưu cấu hình chính sách vận hành vào database.', 'success');
     } catch (err) {
       showToast('Lỗi', err.message || 'Không thể lưu chính sách.', 'error');
@@ -252,10 +248,7 @@ export default function AdminSettingsPage() {
 
   const savePermissions = async () => {
     try {
-      await apiRequest('/manager/settings', {
-        method: 'PUT',
-        body: JSON.stringify({ permissions }),
-      });
+      await updateSystemSettings({ permissions });
       showToast('Thành công', 'Đã cập nhật Ma trận Phân quyền vào database.', 'success');
     } catch (err) {
       showToast('Lỗi', err.message || 'Không thể lưu phân quyền.', 'error');
@@ -269,8 +262,34 @@ export default function AdminSettingsPage() {
     setPermissions(updated);
   };
 
+  const AUDIT_FILTER_GROUPS = {
+    MAINTENANCE: ['MAINTENANCE_CREATED', 'MAINTENANCE_EXTENDED', 'MAINTENANCE_DELETED', 'COURT_STATUS_UPDATED'],
+    REFUND: ['REFUND_DECIDED', 'REFUND_REQUEST_CREATED', 'EXCESS_PAYMENT_REFUND'],
+    COACH_LEAVE: ['COACH_LEAVE_REQUEST_CREATED', 'COACH_LEAVE_REASSIGNED', 'COACH_LEAVE_REJECTED'],
+    SUPPORT_TICKET: ['SUPPORT_TICKET_CREATED', 'SUPPORT_TICKET_REPLIED'],
+    MEMBERSHIP: ['MEMBERSHIP_APPROVED', 'MEMBERSHIP_REJECTED', 'CREATE_USER_ADMIN_PANEL'],
+    BOOKING_ATTENDANCE: [
+      'ATTENDANCE_UPDATED',
+      'BOOKING_RESCHEDULE',
+      'COURT_BOOKING_QUOTA',
+      'RECEPTION_CLASS_ENROLL',
+      'RECEPTION_CLASS_CANCEL',
+      'CASH_COLLECTED',
+      'PAYMENT_CONFIRMED',
+    ],
+    AUTH: ['LOGIN', 'REGISTER', 'LOGOUT', 'CHANGE_PASSWORD'],
+  };
+
   const filteredLogs = auditLogs.filter((log) => {
-    if (auditFilter !== 'ALL' && log.action !== auditFilter && log.entity !== auditFilter) return false;
+    if (auditFilter !== 'ALL') {
+      const actionUpper = String(log.action || '').toUpperCase();
+      const entityUpper = String(log.entity || '').toUpperCase();
+      const groupActions = AUDIT_FILTER_GROUPS[auditFilter];
+      const matchesGroup = groupActions
+        ? groupActions.includes(actionUpper) || actionUpper.includes(auditFilter)
+        : actionUpper === auditFilter || entityUpper === auditFilter;
+      if (!matchesGroup) return false;
+    }
     if (auditSearch.trim()) {
       const q = auditSearch.toLowerCase();
       return (
@@ -627,13 +646,15 @@ export default function AdminSettingsPage() {
                 >
                   <option value="ALL">Tất cả hành động</option>
                   <option value="UPDATE_SETTINGS">Cập nhật thiết lập (UPDATE_SETTINGS)</option>
-                  <option value="CREATE_FACILITY">Thêm sân bãi (CREATE_FACILITY)</option>
-                  <option value="APPROVE_REFUND">Duyệt hoàn tiền (APPROVE_REFUND)</option>
-                  <option value="SYSTEM_MAINTENANCE">Bảo trì hệ thống</option>
-                  <option value="APPROVE">Duyệt (APPROVE)</option>
-                  <option value="REASSIGN_COACH">Đổi Coach (REASSIGN_COACH)</option>
-                  <option value="RENT_EQUIPMENT">Mượn dụng cụ</option>
-                  <option value="CREATE">Tạo mới</option>
+                  <option value="UPDATE_AI_CONFIG">Cấu hình AI (UPDATE_AI_CONFIG)</option>
+                  <option value="BROADCAST_SENT">Gửi thông báo (BROADCAST_SENT)</option>
+                  <option value="MAINTENANCE">Bảo trì &amp; Sân bãi</option>
+                  <option value="REFUND">Hoàn tiền (Refund)</option>
+                  <option value="COACH_LEAVE">Nghỉ phép &amp; Đổi HLV</option>
+                  <option value="SUPPORT_TICKET">Phiếu hỗ trợ (Tickets)</option>
+                  <option value="MEMBERSHIP">Hội viên &amp; Tài khoản</option>
+                  <option value="BOOKING_ATTENDANCE">Đặt lịch, Thu tiền &amp; Điểm danh</option>
+                  <option value="AUTH">Xác thực (Login / Password)</option>
                 </select>
               </div>
             </div>
@@ -753,10 +774,13 @@ export default function AdminSettingsPage() {
                       onChange={(e) => setAiConfig({ ...aiConfig, ai_model: e.target.value })}
                       className="w-full rounded-xl border border-slate-300 bg-white p-3 text-xs font-bold text-slate-800 outline-none focus:border-orange-500"
                     >
-                      <option value="gpt-4o-mini">OpenAI GPT-4o Mini (Khuyên dùng - Nhanh, chuẩn xác, tiết kiệm)</option>
-                      <option value="gpt-4o">OpenAI GPT-4o (Đỉnh cao đa phương thức &amp; phân tích nâng cao)</option>
+                      <option value="gemini-flash-lite-latest">Google Gemini Flash Lite Latest (Mặc định SportHub)</option>
+                      <option value="gemini-3.1-flash-lite">Google Gemini 3.1 Flash Lite</option>
+                      <option value="gemini-3.5-flash-lite">Google Gemini 3.5 Flash Lite</option>
                       <option value="gemini-1.5-flash">Google Gemini 1.5 Flash (Xử lý ngữ cảnh siêu nhanh)</option>
-                      <option value="claude-3-5-sonnet">Anthropic Claude 3.5 Sonnet (Chất lượng phản hồi xuất sắc)</option>
+                      <option value="gpt-4o-mini">OpenAI GPT-4o Mini (Khi dùng endpoint OpenAI)</option>
+                      <option value="gpt-4o">OpenAI GPT-4o (Khi dùng endpoint OpenAI)</option>
+                      <option value="claude-3-5-sonnet">Anthropic Claude 3.5 Sonnet</option>
                     </select>
                     <p className="text-[11px] text-slate-500">
                       Mô hình được gọi để xử lý các câu hỏi về lịch học, đặt sân và chế độ tập luyện của hội viên.

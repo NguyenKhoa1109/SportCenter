@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import MemberLayout from '../../components/layouts/MemberLayout';
-import { getMemberAttendance } from '../../services/memberApi';
+import { getMemberAttendance, getMemberTickets, createMemberTicket } from '../../services/memberApi';
+import { getCategoryLabel, getTicketStatusMeta, formatTicketDate } from '../../utils/ticketLabels';
 import { useApp } from '../../context/AppContext';
 import { TableSkeleton, CardGridSkeleton } from '../../components/common/Skeleton';
 import Pagination from '../../components/common/Pagination';
@@ -20,7 +21,8 @@ export default function MemberAttendancePage() {
     checkIns: [],
   });
 
-  const [activeTab, setActiveTab] = useState('classes'); // 'classes' | 'courts' | 'gate'
+  const [activeTab, setActiveTab] = useState('classes'); // 'classes' | 'courts' | 'gate' | 'tickets'
+  const [tickets, setTickets] = useState([]);
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'PRESENT' | 'EXCUSED_ABSENCE' | 'UNEXCUSED_ABSENCE' | 'REGISTERED'
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -35,22 +37,57 @@ export default function MemberAttendancePage() {
   const [isDisputeModalOpen, setIsDisputeModalOpen] = useState(false);
   const [disputeItem, setDisputeItem] = useState(null);
   const [disputeReason, setDisputeReason] = useState('');
+  const [disputeError, setDisputeError] = useState('');
+  const [submittingDispute, setSubmittingDispute] = useState(false);
 
   const handleOpenDispute = (item) => {
     setDisputeItem(item);
     setDisputeReason('');
+    setDisputeError('');
     setIsDisputeModalOpen(true);
   };
 
-  const handleSubmitDispute = (e) => {
+  const handleSubmitDispute = async (e) => {
     e.preventDefault();
-    if (!disputeReason.trim()) return;
-    setIsDisputeModalOpen(false);
-    showToast(
-      'Gửi khiếu nại thành công',
-      'Yêu cầu rà soát điểm danh của bạn đã được chuyển tới Ban Quản lý trung tâm để đối soát dữ liệu cổng RFID & camera.',
-      'success'
-    );
+    const reason = disputeReason.trim();
+    if (reason.length < 10) {
+      setDisputeError('Vui lòng nhập lý do chi tiết tối thiểu 10 ký tự.');
+      return;
+    }
+
+    const targetLabel = disputeItem?.className || disputeItem?.courtName || 'Buổi tập';
+    const refParts = [];
+    if (disputeItem?.bookingId) refParts.push(`Lớp #${disputeItem.bookingId}`);
+    else if (disputeItem?.courtBookingId) refParts.push(`Sân #${disputeItem.courtBookingId}`);
+    if (disputeItem?.startTime) refParts.push(formatTicketDate(disputeItem.startTime));
+    const prefix = refParts.length ? `[${refParts.join(' • ')}] ` : '';
+
+    setSubmittingDispute(true);
+    setDisputeError('');
+    try {
+      const created = await createMemberTicket({
+        category: 'ATTENDANCE_DISPUTE',
+        title: `Khiếu nại điểm danh: ${targetLabel}`.slice(0, 180),
+        description: `${prefix}${reason}`,
+        severity: 'NORMAL',
+      });
+      if (created) {
+        setTickets((prev) => [created, ...prev]);
+      }
+      setIsDisputeModalOpen(false);
+      window.dispatchEvent(new Event('sporthub:notifications-updated'));
+      showToast(
+        'Gửi khiếu nại thành công',
+        `Phiếu hỗ trợ #TK-${created?.ticketId ?? 'mới'} đã được chuyển tới Ban Quản lý để đối soát.`,
+        'success'
+      );
+    } catch (err) {
+      const msg = err?.message || 'Không thể gửi khiếu nại lúc này. Vui lòng thử lại.';
+      setDisputeError(msg);
+      showToast('Gửi khiếu nại thất bại', msg, 'error');
+    } finally {
+      setSubmittingDispute(false);
+    }
   };
 
   useEffect(() => {
@@ -61,7 +98,10 @@ export default function MemberAttendancePage() {
     setLoading(true);
     setError(null);
     try {
-      const data = await getMemberAttendance();
+      const [data, ticketList] = await Promise.all([
+        getMemberAttendance(),
+        getMemberTickets().catch(() => []),
+      ]);
       setAttendanceData({
         totalSessions: data.totalSessions || 0,
         attendedSessions: data.attendedSessions || 0,
@@ -71,6 +111,7 @@ export default function MemberAttendancePage() {
         courtBookings: data.courtBookings || [],
         checkIns: data.checkIns || [],
       });
+      setTickets(Array.isArray(ticketList) ? ticketList : []);
     } catch (err) {
       console.error('Failed to load attendance:', err);
       setError('Không thể tải dữ liệu điểm danh. Vui lòng thử lại sau.');
@@ -258,6 +299,18 @@ export default function MemberAttendancePage() {
               >
                 <span className="material-symbols-outlined text-[16px]">meeting_room</span>
                 Quét Thẻ Cổng RFID ({attendanceData.checkIns.length})
+              </button>
+              <button
+                onClick={() => setActiveTab('tickets')}
+                type="button"
+                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+                  activeTab === 'tickets'
+                    ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/20'
+                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
+                }`}
+              >
+                <span className="material-symbols-outlined text-[16px]">support_agent</span>
+                Khiếu Nại Của Tôi ({tickets.length})
               </button>
             </div>
 
@@ -477,9 +530,30 @@ export default function MemberAttendancePage() {
                   {paginatedCourts.map((court) => {
                     const startDt = formatDateTime(court.startTime);
                     const endDt = formatDateTime(court.endTime);
+                    const bookingKey = court.courtBookingId ?? court.bookingId;
+                    const paidAmount = court.amountPaid ?? court.totalPrice;
+                    const st = String(court.status || '').toUpperCase();
+                    const statusLabel =
+                      st === 'CHECKED_IN'
+                        ? 'Đã check-in'
+                        : st === 'CONFIRMED' || st === 'PAID'
+                          ? 'Đã xác nhận'
+                          : st === 'NO_SHOW'
+                            ? 'Vắng mặt'
+                            : st === 'PENDING'
+                              ? 'Chờ thanh toán'
+                              : court.status;
+                    const statusClass =
+                      st === 'CHECKED_IN' || st === 'CONFIRMED' || st === 'PAID'
+                        ? 'bg-emerald-100 text-emerald-800'
+                        : st === 'NO_SHOW'
+                          ? 'bg-rose-100 text-rose-800'
+                          : st === 'PENDING'
+                            ? 'bg-amber-100 text-amber-800'
+                            : 'bg-slate-100 text-slate-700';
                     return (
                       <div
-                        key={court.bookingId}
+                        key={bookingKey}
                         className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-white hover:border-slate-300 transition-all flex flex-col sm:flex-row sm:items-center justify-between gap-3"
                       >
                         <div className="flex items-start gap-3.5">
@@ -502,9 +576,9 @@ export default function MemberAttendancePage() {
                                 <span className="material-symbols-outlined text-[15px] text-slate-400">schedule</span>
                                 {startDt.time} - {endDt.time}
                               </span>
-                              {court.totalPrice != null && (
+                              {paidAmount != null && (
                                 <span className="inline-flex items-center gap-1 text-slate-900 font-bold">
-                                  {Number(court.totalPrice).toLocaleString()}₫
+                                  {Number(paidAmount).toLocaleString()}₫
                                 </span>
                               )}
                             </div>
@@ -512,12 +586,8 @@ export default function MemberAttendancePage() {
                         </div>
 
                         <div className="flex items-center gap-2 self-end sm:self-auto">
-                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
-                            court.status === 'CONFIRMED' || court.status === 'PAID'
-                              ? 'bg-emerald-100 text-emerald-800'
-                              : 'bg-slate-100 text-slate-700'
-                          }`}>
-                            {court.status === 'CONFIRMED' || court.status === 'PAID' ? 'Đã xác nhận' : court.status}
+                          <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${statusClass}`}>
+                            {statusLabel}
                           </span>
                           <button
                             type="button"
@@ -627,6 +697,52 @@ export default function MemberAttendancePage() {
               )}
             </div>
           )}
+
+          {/* TAB 4: Khiếu nại của tôi */}
+          {activeTab === 'tickets' && (
+            <div className="p-4 sm:p-6">
+              {tickets.length === 0 ? (
+                <div className="text-center py-12 px-4">
+                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
+                    <span className="material-symbols-outlined text-[32px]">support_agent</span>
+                  </div>
+                  <h3 className="text-base font-bold text-slate-800">Chưa có phiếu khiếu nại nào</h3>
+                  <p className="text-sm text-slate-500 mt-1">Khi bạn gửi khiếu nại điểm danh hoặc đặt sân, tiến độ phản hồi từ Quản lý sẽ hiển thị tại đây.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {tickets.map((t) => {
+                    const stMeta = getTicketStatusMeta(t.status);
+                    return (
+                      <div key={t.ticketId} className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-white space-y-2.5">
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-xs font-mono font-bold text-slate-400">#TK-{t.ticketId}</span>
+                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
+                              {getCategoryLabel(t.category)}
+                            </span>
+                            <h4 className="text-sm font-bold text-slate-900">{t.title}</h4>
+                          </div>
+                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${stMeta.badgeClass}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${stMeta.dotClass}`} />
+                            {stMeta.label}
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{t.description}</p>
+                        {t.adminResponse && (
+                          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
+                            <span className="font-bold">Phản hồi từ Quản lý / Lễ tân: </span>
+                            {t.adminResponse}
+                          </div>
+                        )}
+                        <div className="text-[11px] text-slate-400">Tạo lúc {formatTicketDate(t.createdAt)}</div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       </div>
 
@@ -662,27 +778,36 @@ export default function MemberAttendancePage() {
                 <label className="text-xs font-bold uppercase text-slate-700">Lý do khiếu nại chi tiết *</label>
                 <textarea
                   required
+                  minLength={10}
                   rows={3}
                   value={disputeReason}
-                  onChange={(e) => setDisputeReason(e.target.value)}
+                  onChange={(e) => {
+                    setDisputeReason(e.target.value);
+                    if (disputeError) setDisputeError('');
+                  }}
                   placeholder="Ghi rõ thông tin: Có mặt tại lớp lúc mấy giờ, HLV nào phụ trách hoặc lý do xin nghỉ có phép..."
                   className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-medium text-slate-800 outline-none focus:border-orange-500 resize-none"
                 />
+                {disputeError && (
+                  <p className="text-[11px] font-semibold text-rose-600">{disputeError}</p>
+                )}
               </div>
 
               <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"
+                  disabled={submittingDispute}
                   onClick={() => setIsDisputeModalOpen(false)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer disabled:opacity-60"
                 >
                   Hủy
                 </button>
                 <button
                   type="submit"
-                  className="px-5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all cursor-pointer"
+                  disabled={submittingDispute}
+                  className="px-5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all cursor-pointer disabled:opacity-60"
                 >
-                  Gửi Khiếu Nại
+                  {submittingDispute ? 'Đang gửi...' : 'Gửi Khiếu Nại'}
                 </button>
               </div>
             </form>

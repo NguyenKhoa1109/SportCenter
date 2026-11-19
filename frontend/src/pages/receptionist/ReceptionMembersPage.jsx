@@ -57,31 +57,7 @@ export default function ReceptionMembersPage() {
           });
         }
       });
-    const handleSaveEmergency = async (e) => {
-    e.preventDefault();
-    if (!emergencyMember) return;
-    setActionLoading(true);
-    setActionError('');
-    try {
-      await updateReceptionMemberEmergencyContact(emergencyMember.userId, {
-        emergencyContactName: emergencyForm.name.trim(),
-        emergencyContactPhone: emergencyForm.phone.trim(),
-      });
-      setActionSuccess('Cập nhật liên hệ khẩn cấp thành công!');
-      setTimeout(() => {
-        setEmergencyMember(null);
-        setEmergencyForm({ name: '', phone: '' });
-        setActionSuccess('');
-        setRefreshKey((k) => k + 1);
-      }, 1000);
-    } catch (err) {
-      setActionError(err.message || 'Không thể cập nhật liên hệ khẩn cấp.');
-    } finally {
-      setActionLoading(false);
-    }
-  };
-
-  return () => {
+    return () => {
       active = false;
     };
   }, [submittedQuery, page, requestKey]);
@@ -260,6 +236,7 @@ export default function ReceptionMembersPage() {
                       <th className="px-5 py-3.5">Mã</th>
                       <th className="px-5 py-3.5">Hội viên</th>
                       <th className="px-5 py-3.5">Liên hệ</th>
+                      <th className="px-5 py-3.5">Gói tập &amp; Quota</th>
                       <th className="px-5 py-3.5">Thẻ từ RFID / QR</th>
                       <th className="px-5 py-3.5">Trạng thái</th>
                       <th className="px-5 py-3.5 text-right">Thao tác quầy</th>
@@ -293,6 +270,25 @@ export default function ReceptionMembersPage() {
                             <div className="text-[11px] text-red-600 font-medium mt-0.5">
                               SOS: {member.emergencyContactName} ({member.emergencyContactPhone || '—'})
                             </div>
+                          )}
+                        </td>
+                        <td className="px-5 py-4 whitespace-nowrap">
+                          {member.activePackageName ? (
+                            <div className="space-y-0.5">
+                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-orange-50 border border-orange-200 text-orange-800 text-[11px] font-bold">
+                                {member.activePackageName}
+                              </span>
+                              <div className="text-[11px] text-slate-500">
+                                {member.activePackageEndDate
+                                  ? `HSD: ${new Date(`${member.activePackageEndDate}T00:00:00`).toLocaleDateString('vi-VN')}`
+                                  : 'Đang hiệu lực'}
+                                {member.remainingQuotaSessions > 0 ? ` · ${member.remainingQuotaSessions} buổi` : ''}
+                              </div>
+                            </div>
+                          ) : (
+                            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full bg-slate-100 text-slate-500 text-[11px] font-medium">
+                              Chưa có gói
+                            </span>
                           )}
                         </td>
                         <td className="px-5 py-4 whitespace-nowrap">

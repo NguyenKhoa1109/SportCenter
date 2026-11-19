@@ -1,10 +1,20 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import MemberLayout from '../../components/layouts/MemberLayout';
-import { getMemberTransactions, getMemberProfile } from '../../services/memberApi';
+import {
+  createMemberTicket,
+  getMemberProfile,
+  getMemberTickets,
+  getMemberTransactions,
+} from '../../services/memberApi';
 import { useApp } from '../../context/AppContext';
 import Pagination from '../../components/common/Pagination';
 import { TableSkeleton } from '../../components/common/Skeleton';
-import { apiRequest } from '../../services/apiClient';
+import {
+  formatTicketDate,
+  getCategoryLabel,
+  getTicketSeverityMeta,
+  getTicketStatusMeta,
+} from '../../utils/ticketLabels';
 
 // Import only 2 reusable modals
 import ReceiptModal from '../../components/member/ReceiptModal';
@@ -99,6 +109,7 @@ const FILTER_LABELS = {
 export default function MemberTransactionsPage() {
   const { showToast } = useApp();
   const [transactions, setTransactions] = useState([]);
+  const [tickets, setTickets] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -117,48 +128,49 @@ export default function MemberTransactionsPage() {
   const [complaintDescription, setComplaintDescription] = useState('');
   const [complaintSeverity, setComplaintSeverity] = useState('NORMAL');
 
+  const fetchDashboardData = async () => {
+    const [txRes, profRes, ticketRes] = await Promise.all([
+      getMemberTransactions().catch(() => []),
+      getMemberProfile().catch(() => null),
+      getMemberTickets().catch(() => []),
+    ]);
+    return {
+      txList: Array.isArray(txRes) ? txRes : [],
+      profRes,
+      ticketList: Array.isArray(ticketRes) ? ticketRes : [],
+    };
+  };
+
   useEffect(() => {
-    loadData();
+    let active = true;
+    fetchDashboardData()
+      .then(({ txList, profRes, ticketList }) => {
+        if (!active) return;
+        setTransactions(txList);
+        setProfile(profRes);
+        setTickets(ticketList);
+        setError(null);
+      })
+      .catch((err) => {
+        console.error('Error loading transactions:', err);
+        if (active) setError('Không thể tải lịch sử giao dịch.');
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+    return () => {
+      active = false;
+    };
   }, []);
 
   const loadData = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [txRes, profRes] = await Promise.all([
-        getMemberTransactions().catch(() => []),
-        getMemberProfile().catch(() => null),
-      ]);
-
-      let list = Array.isArray(txRes) ? txRes : [];
-      
-      // If no quota transaction exists, inject realistic 0đ quota transaction for VIP demonstration (MEM-12)
-      const hasQuotaTx = list.some(
-        (t) => t.itemType === 'QUOTA' || t.paymentMethod === 'MEMBERSHIP_QUOTA' || parseFloat(t.amount) === 0
-      );
-      if (!hasQuotaTx) {
-        list = [
-          {
-            id: 'TX-QTA-802',
-            referenceCode: 'BK-QTA-802',
-            itemName: 'Sân Cầu Lông Tiêu Chuẩn 01 (1 Giờ)',
-            itemType: 'QUOTA',
-            amount: 0,
-            paymentMethod: 'MEMBERSHIP_QUOTA',
-            paymentStatus: 'PAID',
-            createdAt: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-            quotaDetail: {
-              packageName: 'Gói VIP All-Access 6 Tháng',
-              deductedSlots: 1,
-              remainingSlots: 4,
-            },
-          },
-          ...list,
-        ];
-      }
-
-      setTransactions(list);
+      const { txList, profRes, ticketList } = await fetchDashboardData();
+      setTransactions(txList);
       setProfile(profRes);
+      setTickets(ticketList);
     } catch (err) {
       console.error('Error loading transactions:', err);
       setError('Không thể tải lịch sử giao dịch.');
@@ -220,14 +232,11 @@ export default function MemberTransactionsPage() {
     }
 
     try {
-      await apiRequest('/members/me/tickets', {
-        method: 'POST',
-        body: JSON.stringify({
-          category: complaintCategory,
-          title: complaintTitle.trim(),
-          description: complaintDescription.trim(),
-          severity: complaintSeverity,
-        }),
+      await createMemberTicket({
+        category: complaintCategory,
+        title: complaintTitle.trim(),
+        description: complaintDescription.trim(),
+        severity: complaintSeverity,
       });
       
       setComplaintTitle('');
@@ -499,6 +508,106 @@ export default function MemberTransactionsPage() {
             )}
           </div>
         </div>
+
+        {/* Support Tickets & Responses Section */}
+        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+          <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-[20px] text-orange-500">support_agent</span>
+                <h2 className="text-base font-bold text-slate-900">
+                  Khiếu Nại &amp; Phản Hồi Hỗ Trợ ({tickets.length})
+                </h2>
+              </div>
+              <p className="text-xs text-slate-500 mt-0.5">
+                Theo dõi trạng thái xử lý và phản hồi trực tiếp từ Lễ tân / Quản lý trung tâm.
+              </p>
+            </div>
+            <button
+              onClick={() => setShowComplaintModal(true)}
+              type="button"
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto"
+            >
+              <span className="material-symbols-outlined text-[16px]">add_comment</span>
+              Gửi Khiếu Nại Mới
+            </button>
+          </div>
+
+          <div className="p-4 sm:p-5">
+            {loading ? (
+              <TableSkeleton rows={3} cols={4} />
+            ) : tickets.length === 0 ? (
+              <div className="py-10 text-center">
+                <div className="w-12 h-12 mx-auto mb-2.5 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
+                  <span className="material-symbols-outlined text-[26px]">mark_chat_read</span>
+                </div>
+                <h3 className="text-sm font-bold text-slate-800">Bạn chưa gửi khiếu nại nào</h3>
+                <p className="text-xs text-slate-500 mt-1">
+                  Nếu có vấn đề về hóa đơn, điểm danh hoặc cơ sở vật chất, hãy bấm &quot;Gửi Khiếu Nại Mới&quot;.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {tickets.map((ticket) => {
+                  const statusMeta = getTicketStatusMeta(ticket.status);
+                  const sevMeta = getTicketSeverityMeta(ticket.severity);
+                  return (
+                    <article
+                      key={ticket.ticketId}
+                      className="rounded-2xl border border-slate-200 p-4 space-y-2.5 hover:border-slate-300 transition-colors"
+                    >
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <div className="space-y-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="font-mono text-xs font-bold text-slate-500">
+                              #TK-{ticket.ticketId}
+                            </span>
+                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold">
+                              {getCategoryLabel(ticket.category)}
+                            </span>
+                            <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${sevMeta.badgeClass}`}>
+                              {sevMeta.label}
+                            </span>
+                          </div>
+                          <h3 className="text-sm font-bold text-slate-900">{ticket.title}</h3>
+                        </div>
+
+                        <div className="flex flex-col items-end gap-1">
+                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[10px] font-bold ${statusMeta.badgeClass}`}>
+                            <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dotClass}`} />
+                            {statusMeta.label}
+                          </span>
+                          <span className="text-[11px] text-slate-400">
+                            {formatTicketDate(ticket.createdAt)}
+                          </span>
+                        </div>
+                      </div>
+
+                      <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed">
+                        {ticket.description}
+                      </p>
+
+                      {ticket.adminResponse ? (
+                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-950">
+                          <div className="font-bold flex items-center gap-1.5 text-emerald-800 mb-1">
+                            <span className="material-symbols-outlined text-[16px]">quickreply</span>
+                            <span>Phản hồi từ trung tâm</span>
+                          </div>
+                          <p className="whitespace-pre-line leading-relaxed">{ticket.adminResponse}</p>
+                        </div>
+                      ) : (
+                        <div className="text-[11px] text-slate-400 italic flex items-center gap-1">
+                          <span className="material-symbols-outlined text-[14px]">schedule</span>
+                          <span>Đang chờ bộ phận hỗ trợ tiếp nhận và phản hồi...</span>
+                        </div>
+                      )}
+                    </article>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </section>
       </div>
 
       {/* Complaint Modal - INLINE */}

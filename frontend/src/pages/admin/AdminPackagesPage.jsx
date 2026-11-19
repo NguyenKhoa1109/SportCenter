@@ -126,7 +126,6 @@ export default function AdminPackagesPage() {
       if (e.key === 'Escape') {
         setIsDrawerOpen(false);
         setIsVoucherModalOpen(false);
-        setIsPtModalOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);

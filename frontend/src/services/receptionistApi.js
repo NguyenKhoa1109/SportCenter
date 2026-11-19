@@ -88,3 +88,29 @@ export const changeReceptionistPassword = (data) =>
     body: JSON.stringify(data),
   });
 
+export const getReceptionistTickets = () =>
+  apiRequest('/receptionist/tickets');
+
+export const createReceptionistTicket = (data) =>
+  apiRequest('/receptionist/tickets', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const replyReceptionistTicket = (ticketId, data) =>
+  apiRequest(`/receptionist/tickets/${encodeURIComponent(ticketId)}/reply`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const enrollReceptionistClassMember = (sessionId, data) =>
+  apiRequest(`/receptionist/classes/${encodeURIComponent(sessionId)}/enroll`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const cancelReceptionistClassBooking = (bookingId) =>
+  apiRequest(`/receptionist/classes/bookings/${encodeURIComponent(bookingId)}`, {
+    method: 'DELETE',
+  });
+

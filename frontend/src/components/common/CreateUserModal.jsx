@@ -25,6 +25,11 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
   const [selectedSportIds, setSelectedSportIds] = useState([]);
 
   const handleRoleChange = async (nextRole) => {
+    if (!isManager) {
+      setRole('MEMBER');
+      setSelectedSportIds([]);
+      return;
+    }
     setRole(nextRole);
     if (nextRole !== 'COACH') {
       setSelectedSportIds([]);
@@ -91,7 +96,9 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
       return;
     }
 
-    if (role === 'COACH' && selectedSportIds.length === 0) {
+    const effectiveRole = isManager ? role : 'MEMBER';
+
+    if (effectiveRole === 'COACH' && selectedSportIds.length === 0) {
       setError('Vui lòng chọn ít nhất một bộ môn giảng dạy cho Huấn luyện viên.');
       return;
     }
@@ -103,8 +110,8 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
         phone: phone.trim(),
         email: email.trim(),
         password,
-        role,
-        sportIds: role === 'COACH' ? selectedSportIds.map(Number) : null,
+        role: effectiveRole,
+        sportIds: effectiveRole === 'COACH' ? selectedSportIds.map(Number) : null,
         dateOfBirth: dateOfBirth || null,
         gender: gender || null,
         address: address.trim() || null,
@@ -121,7 +128,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
 
       showToast(
         'Tạo tài khoản thành công',
-        `Tài khoản "${fullName}" (${role}) đã được tạo và kích hoạt.`,
+        `Tài khoản "${fullName}" (${effectiveRole}) đã được tạo và kích hoạt.`,
         'success'
       );
       if (onSuccess) onSuccess();
@@ -169,35 +176,41 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
           {/* Vai trò Dropdown */}
           <div className="flex flex-col gap-1.5">
             <label htmlFor="create-user-role" className="text-xs uppercase tracking-wider text-slate-700 font-extrabold flex items-center justify-between">
-              <span>ĐĂNG KÝ VỚI VAI TRÒ *</span>
+              <span>ĐĂNG KÝ VAI TRÒ *</span>
               <span className="text-[10px] text-slate-400 font-semibold normal-case">
-                {isManager ? 'Quyền Quản lý (5 vai trò)' : 'Quyền Lễ tân (3 vai trò)'}
+                {isManager ? 'Quyền Quản lý (5 vai trò)' : 'Quyền Lễ tân (Chỉ tạo Hội viên)'}
               </span>
             </label>
-            <div className="relative">
-              <select
+            {isManager ? (
+              <div className="relative">
+                <select
+                  id="create-user-role"
+                  value={role}
+                  onChange={(e) => handleRoleChange(e.target.value)}
+                  className="w-full bg-white text-slate-900 px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-2xs appearance-none cursor-pointer"
+                >
+                  <option value="MEMBER">Khách hàng / Hội viên (MEMBER)</option>
+                  <option value="COACH">Huấn luyện viên (COACH)</option>
+                  <option value="RECEPTIONIST">Nhân viên lễ tân (RECEPTIONIST)</option>
+                  <option value="MANAGER">Quản lý hệ thống (MANAGER)</option>
+                  <option value="ADMIN">Quản trị viên (ADMIN)</option>
+                </select>
+                <span className="material-symbols-outlined absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-[18px]">
+                  expand_more
+                </span>
+              </div>
+            ) : (
+              <input
                 id="create-user-role"
-                value={role}
-                onChange={(e) => handleRoleChange(e.target.value)}
-                className="w-full bg-white text-slate-900 px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-2xs appearance-none cursor-pointer"
-              >
-                <option value="MEMBER">Khách hàng / Hội viên (MEMBER)</option>
-                <option value="COACH">Huấn luyện viên (COACH)</option>
-                <option value="RECEPTIONIST">Nhân viên lễ tân (RECEPTIONIST)</option>
-                {isManager && (
-                  <>
-                    <option value="MANAGER">Quản lý hệ thống (MANAGER)</option>
-                    <option value="ADMIN">Quản trị viên (ADMIN)</option>
-                  </>
-                )}
-              </select>
-              <span className="material-symbols-outlined absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-[18px]">
-                expand_more
-              </span>
-            </div>
+                type="text"
+                readOnly
+                value="Khách hàng / Hội viên (MEMBER)"
+                className="w-full bg-slate-50 text-slate-700 px-4 py-2.5 rounded-xl border border-slate-200 text-xs font-bold cursor-not-allowed"
+              />
+            )}
           </div>
 
-          {role === 'COACH' && (
+          {isManager && role === 'COACH' && (
             <CoachSportSelector
               sports={sports}
               selectedIds={selectedSportIds}

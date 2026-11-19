@@ -36,6 +36,7 @@ import ReceptionClassesPage from './pages/receptionist/ReceptionClassesPage';
 import ReceptionShiftReportPage from './pages/receptionist/ReceptionShiftReportPage';
 import ReceptionEquipmentPage from './pages/receptionist/ReceptionEquipmentPage';
 import ReceptionProfilePage from './pages/receptionist/ReceptionProfilePage';
+import ReceptionTicketsPage from './pages/receptionist/ReceptionTicketsPage';
 
 // Coach Portal Pages (Chỉ giữ các trang đã tạo)
 import CoachDashboardPage from './pages/coach/CoachDashboardPage';
@@ -64,6 +65,7 @@ import AdminBroadcastPage from './pages/admin/AdminBroadcastPage';
 import AdminAuditLogPage from './pages/admin/AdminAuditLogPage';
 import AdminMaintenancePage from './pages/admin/AdminMaintenancePage';
 import AdminPaymentReconciliationPage from './pages/admin/AdminPaymentReconciliationPage';
+import AdminTicketsPage from './pages/admin/AdminTicketsPage';
 import ToastContainer from './components/ToastContainer';
 import PaymentResumeBoundary from './components/PaymentResumeBoundary';
 
@@ -139,6 +141,8 @@ function App() {
           <Route path="/receptionist/classes" element={<RequireRole role="receptionist"><ReceptionClassesPage /></RequireRole>} />
           <Route path="/receptionist/shift" element={<RequireRole role="receptionist"><ReceptionShiftReportPage /></RequireRole>} />
           <Route path="/receptionist/profile" element={<RequireRole role="receptionist"><ReceptionProfilePage /></RequireRole>} />
+          <Route path="/reception/tickets" element={<RequireRole role="receptionist"><ReceptionTicketsPage /></RequireRole>} />
+          <Route path="/receptionist/tickets" element={<RequireRole role="receptionist"><ReceptionTicketsPage /></RequireRole>} />
 
           {/* Coach Routes */}
           <Route path="/coach" element={<RequireRole role="coach"><CoachDashboardPage /></RequireRole>} />
@@ -166,6 +170,7 @@ function App() {
           <Route path="/admin/audit-logs" element={<RequireRole role="admin"><AdminAuditLogPage /></RequireRole>} />
           <Route path="/admin/payment-reconciliation" element={<RequireRole role="admin"><AdminPaymentReconciliationPage /></RequireRole>} />
           <Route path="/admin/maintenance" element={<RequireRole role="admin"><AdminMaintenancePage /></RequireRole>} />
+          <Route path="/admin/tickets" element={<RequireRole role="admin"><AdminTicketsPage /></RequireRole>} />
 
           {/* Convenient Aliases for Cross-Role / Root Navigation */}
           <Route path="/workout-plans" element={<Navigate to="/member/workout-plans" replace />} />

@@ -107,4 +107,19 @@ export const updateAiConfig = (config) =>
     body: JSON.stringify(config),
   });
 
+export const getManagerTickets = () =>
+  apiRequest('/manager/tickets');
+
+export const createManagerTicket = (data) =>
+  apiRequest('/manager/tickets', {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
+export const replyManagerTicket = (ticketId, data) =>
+  apiRequest(`/manager/tickets/${encodeURIComponent(ticketId)}/reply`, {
+    method: 'POST',
+    body: JSON.stringify(data),
+  });
+
 

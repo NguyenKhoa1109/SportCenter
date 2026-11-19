@@ -7,6 +7,38 @@ import {
   markAllNotificationsRead,
 } from '../../services/engagementApi';
 
+const SCHEDULE_NOTIFICATION_TYPES = new Set([
+  'CLASS_REMINDER',
+  'REMINDER',
+  'BOOKING',
+  'BOOKING_RESCHEDULE',
+  'SCHEDULE',
+  'MAINTENANCE_OVERLAP',
+]);
+const MEMBERSHIP_NOTIFICATION_TYPES = new Set(['MEMBERSHIP_EXPIRY', 'MEMBERSHIP']);
+const COACH_NOTIFICATION_TYPES = new Set([
+  'COACH_FEEDBACK',
+  'ATTENDANCE',
+  'FEEDBACK',
+  'COACH_NOTICE',
+  'WORKOUT',
+]);
+const FINANCE_NOTIFICATION_TYPES = new Set(['REFUND', 'PAYMENT']);
+
+const normalizeNotificationType = (type) => String(type || 'SYSTEM').trim().toUpperCase();
+
+const normalizeNotificationItem = (item, idx) => ({
+  id: item.notificationId ?? item.id ?? `notif-${idx}`,
+  notificationId: item.notificationId ?? null,
+  type: normalizeNotificationType(item.type),
+  title: item.title || 'Thông báo hệ thống',
+  message: item.message || item.content || '',
+  isRead: Boolean(item.read ?? item.isRead ?? false),
+  read: Boolean(item.read ?? item.isRead ?? false),
+  createdAt: item.createdAt || item.timestamp || null,
+  link: item.link || item.actionUrl || null,
+});
+
 export default function MemberNotificationsPage() {
   const [notifications, setNotifications] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -24,18 +56,9 @@ export default function MemberNotificationsPage() {
     try {
       const data = await getNotifications();
       if (Array.isArray(data)) {
-        setNotifications(data);
+        setNotifications(data.map(normalizeNotificationItem));
       } else if (data && Array.isArray(data.items)) {
-        setNotifications(data.items.map((item) => ({
-          id: item.notificationId,
-          notificationId: item.notificationId,
-          type: item.type || 'SYSTEM',
-          title: item.title,
-          message: item.message,
-          isRead: item.read,
-          read: item.read,
-          createdAt: item.createdAt,
-        })));
+        setNotifications(data.items.map(normalizeNotificationItem));
       } else {
         setNotifications([]);
       }
@@ -58,8 +81,9 @@ export default function MemberNotificationsPage() {
 
   const handleNotificationClick = async (item) => {
     try {
-      if (!item.isRead && !item.read) {
-        await markNotificationRead(item.notificationId || item.id);
+      const numericId = item.notificationId ?? (/^\d+$/.test(String(item.id || '')) ? Number(item.id) : null);
+      if (!item.isRead && !item.read && numericId != null) {
+        await markNotificationRead(numericId);
         setNotifications((prev) =>
           prev.map((n) => (n.id === item.id ? { ...n, isRead: true, read: true } : n))
         );
@@ -75,26 +99,51 @@ export default function MemberNotificationsPage() {
   const filteredNotifications = useMemo(() => {
     if (activeFilter === 'ALL') return notifications;
     return notifications.filter((n) => {
-      if (activeFilter === 'CLASS_REMINDER') return n.type === 'CLASS_REMINDER' || n.type === 'REMINDER';
-      if (activeFilter === 'MEMBERSHIP_EXPIRY') return n.type === 'MEMBERSHIP_EXPIRY' || n.type === 'MEMBERSHIP';
-      if (activeFilter === 'COACH_FEEDBACK') return n.type === 'COACH_FEEDBACK' || n.type === 'ATTENDANCE';
-      return n.type === activeFilter;
+      const t = normalizeNotificationType(n.type);
+      if (activeFilter === 'CLASS_REMINDER') return SCHEDULE_NOTIFICATION_TYPES.has(t);
+      if (activeFilter === 'MEMBERSHIP_EXPIRY') return MEMBERSHIP_NOTIFICATION_TYPES.has(t);
+      if (activeFilter === 'COACH_FEEDBACK') return COACH_NOTIFICATION_TYPES.has(t);
+      if (activeFilter === 'REFUND') return FINANCE_NOTIFICATION_TYPES.has(t);
+      if (activeFilter === 'SYSTEM') {
+        return (
+          !SCHEDULE_NOTIFICATION_TYPES.has(t) &&
+          !MEMBERSHIP_NOTIFICATION_TYPES.has(t) &&
+          !COACH_NOTIFICATION_TYPES.has(t) &&
+          !FINANCE_NOTIFICATION_TYPES.has(t)
+        );
+      }
+      return t === activeFilter;
     });
   }, [notifications, activeFilter]);
 
   const unreadCount = useMemo(() => {
-    return notifications.filter((n) => !n.isRead).length;
+    return notifications.filter((n) => !n.isRead && !n.read).length;
   }, [notifications]);
 
   const getTypeMeta = (type) => {
-    switch (type) {
+    switch (normalizeNotificationType(type)) {
       case 'CLASS_REMINDER':
       case 'REMINDER':
+      case 'SCHEDULE':
         return {
           icon: 'event_available',
           color: 'bg-blue-50 text-blue-600 border-blue-200',
           badge: 'Nhắc Lịch Học',
           badgeColor: 'bg-blue-100 text-blue-800',
+        };
+      case 'BOOKING_RESCHEDULE':
+        return {
+          icon: 'edit_calendar',
+          color: 'bg-blue-50 text-blue-600 border-blue-200',
+          badge: 'Đổi Lịch Sân',
+          badgeColor: 'bg-blue-100 text-blue-800',
+        };
+      case 'MAINTENANCE_OVERLAP':
+        return {
+          icon: 'engineering',
+          color: 'bg-amber-50 text-amber-600 border-amber-200',
+          badge: 'Bảo Trì Sân',
+          badgeColor: 'bg-amber-100 text-amber-800',
         };
       case 'MEMBERSHIP_EXPIRY':
       case 'MEMBERSHIP':
@@ -106,10 +155,25 @@ export default function MemberNotificationsPage() {
         };
       case 'COACH_FEEDBACK':
       case 'ATTENDANCE':
+      case 'FEEDBACK':
         return {
           icon: 'rate_review',
           color: 'bg-emerald-50 text-emerald-600 border-emerald-200',
           badge: 'Đánh Giá HLV',
+          badgeColor: 'bg-emerald-100 text-emerald-800',
+        };
+      case 'COACH_NOTICE':
+        return {
+          icon: 'sports',
+          color: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+          badge: 'Dặn Dò Từ HLV',
+          badgeColor: 'bg-emerald-100 text-emerald-800',
+        };
+      case 'WORKOUT':
+        return {
+          icon: 'fitness_center',
+          color: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+          badge: 'Giáo Án Tập',
           badgeColor: 'bg-emerald-100 text-emerald-800',
         };
       case 'REFUND':
@@ -119,12 +183,40 @@ export default function MemberNotificationsPage() {
           badge: 'Hoàn Tiền',
           badgeColor: 'bg-indigo-100 text-indigo-800',
         };
+      case 'PAYMENT':
+        return {
+          icon: 'payments',
+          color: 'bg-indigo-50 text-indigo-600 border-indigo-200',
+          badge: 'Thanh Toán',
+          badgeColor: 'bg-indigo-100 text-indigo-800',
+        };
       case 'BOOKING':
         return {
           icon: 'confirmation_number',
           color: 'bg-emerald-50 text-emerald-600 border-emerald-200',
           badge: 'Đặt Lịch & Quota',
           badgeColor: 'bg-emerald-100 text-emerald-800',
+        };
+      case 'SUPPORT':
+        return {
+          icon: 'support_agent',
+          color: 'bg-orange-50 text-orange-600 border-orange-200',
+          badge: 'Hỗ Trợ / Khiếu Nại',
+          badgeColor: 'bg-orange-100 text-orange-800',
+        };
+      case 'EQUIPMENT':
+        return {
+          icon: 'sports_handball',
+          color: 'bg-orange-50 text-orange-600 border-orange-200',
+          badge: 'Dụng Cụ Tập',
+          badgeColor: 'bg-orange-100 text-orange-800',
+        };
+      case 'BROADCAST':
+        return {
+          icon: 'campaign',
+          color: 'bg-orange-50 text-orange-600 border-orange-200',
+          badge: 'Thông Báo Chung',
+          badgeColor: 'bg-orange-100 text-orange-800',
         };
       default:
         return {

@@ -11,7 +11,7 @@ import { useApp } from '../../context/AppContext';
 import Pagination from '../../components/common/Pagination';
 import { getAvatarImageUrl } from '../../utils/avatarHelper';
 import FormattedAiText from '../../components/common/FormattedAiText';
-import { cleanMarkdownText } from '../../utils/markdownUtils';
+import { parseAiWorkoutPlan } from '../../utils/markdownUtils';
 
 const SESSION_STATUS_META = {
   PRESENT: { label: 'Có mặt', className: 'bg-emerald-100 text-emerald-800' },
@@ -85,6 +85,8 @@ export default function CoachStudentsPage() {
 
   // PT Workout Plan & Evaluation Modal State (COA-07..10 & Class-wide plans)
   const [selectedStudentForPlan, setSelectedStudentForPlan] = useState(null);
+  const [activePlanBookingId, setActivePlanBookingId] = useState(null);
+  const [fillingAiTemplate, setFillingAiTemplate] = useState(false);
   const [planScope, setPlanScope] = useState('individual'); // 'individual' | 'class'
   const [selectedSessionIdForClassPlan, setSelectedSessionIdForClassPlan] = useState('');
   const [modalTab, setModalTab] = useState('create'); // 'create' | 'history'
@@ -270,11 +272,13 @@ export default function CoachStudentsPage() {
   }, [filteredStudents, currentPage]);
 
   // Open plan modal for individual student
-  const openPlanModal = async (student) => {
+  const openPlanModal = async (student, sessionOverride = null) => {
     setSelectedStudentForPlan(student);
     setPlanScope('individual');
-    if (student?.sessions?.[0]?.sessionId) {
-      setSelectedSessionIdForClassPlan(String(student.sessions[0].sessionId));
+    const preferredSession = sessionOverride || student?.sessions?.[0] || null;
+    setActivePlanBookingId(preferredSession?.bookingId ?? null);
+    if (preferredSession?.sessionId) {
+      setSelectedSessionIdForClassPlan(String(preferredSession.sessionId));
     }
     setModalTab('create');
     setPlanForm({
@@ -332,32 +336,79 @@ export default function CoachStudentsPage() {
     });
   };
 
-  const handleFillAiTemplate = () => {
-    const availableAiPlan = selectedStudentForPlan?.sessions
-      ?.map((s) => plans[s.bookingId])
-      .find((p) => Boolean(p));
+  const handleFillAiTemplate = async () => {
+    const bookingId =
+      activePlanBookingId ||
+      selectedStudentForPlan?.sessions?.find((s) => plans[s.bookingId])?.bookingId ||
+      selectedStudentForPlan?.sessions?.[0]?.bookingId ||
+      null;
+
+    let availableAiPlan =
+      (bookingId ? plans[bookingId] : null) ||
+      selectedStudentForPlan?.sessions?.map((s) => plans[s.bookingId]).find(Boolean) ||
+      null;
+
+    if (!availableAiPlan && bookingId && planScope === 'individual') {
+      setFillingAiTemplate(true);
+      try {
+        const result = await generateCoachPlan(bookingId, planForm.goal || '');
+        if (result?.answer) {
+          availableAiPlan = result.answer;
+          setPlans((current) => ({ ...current, [bookingId]: result.answer }));
+        }
+      } catch (err) {
+        showToast({
+          title: 'Dùng mẫu chuẩn',
+          message: err?.message || 'Chưa kết nối được AI, tạm điền giáo án thể lực chuẩn.',
+          type: 'warning',
+        });
+      } finally {
+        setFillingAiTemplate(false);
+      }
+    }
+
+    const fallbackExercises = [
+      { name: 'Barbell Back Squat', sets: 4, reps: 8, weightKg: 60, note: 'Kiểm soát nhịp hạ tạ 3 giây' },
+      { name: 'Romanian Deadlift (RDL)', sets: 4, reps: 10, weightKg: 50, note: 'Kéo căng cơ đùi sau và siết mông' },
+      { name: 'Dumbbell Incline Bench Press', sets: 3, reps: 12, weightKg: 20, note: 'Mở rộng ngực, thở đều' },
+      { name: 'Agility Ladder Drills (Bộ chân)', sets: 4, reps: 20, weightKg: 0, note: 'Tăng tốc độ guồng chân và thăng bằng' },
+    ];
+
+    const parsed = availableAiPlan
+      ? parseAiWorkoutPlan(availableAiPlan, {
+          goal: planForm.goal || 'Tối ưu theo giáo án phân tích từ AI SportHub',
+          sessionResult: 'Đã đồng bộ cấu trúc buổi tập từ gợi ý AI SportHub.',
+          homework: 'Duy trì phục hồi, giãn cơ 10 phút và bổ sung đủ nước & protein.',
+        })
+      : null;
 
     setPlanForm((prev) => ({
       ...prev,
       title: planScope === 'class'
         ? 'Lộ trình Rèn luyện Đồng bộ - Cả Lớp'
-        : `Lộ trình Thể lực Nâng cao - ${selectedStudentForPlan?.name || 'Học viên'}`,
-      goal: availableAiPlan ? 'Tối ưu theo giáo án phân tích từ AI SportHub' : 'Tối ưu hóa sức mạnh bộc phát, nâng cao 1RM tạ và tốc độ phản xạ thể thao',
-      exercises: [
-        { name: 'Barbell Back Squat', sets: 4, reps: 8, weightKg: 60, note: 'Kiểm soát nhịp hạ tạ 3 giây' },
-        { name: 'Romanian Deadlift (RDL)', sets: 4, reps: 10, weightKg: 50, note: 'Kéo căng cơ đùi sau và siết mông' },
-        { name: 'Dumbbell Incline Bench Press', sets: 3, reps: 12, weightKg: 20, note: 'Mở rộng ngực, thở đều' },
-        { name: 'Agility Ladder Drills (Bộ chân)', sets: 4, reps: 20, weightKg: 0, note: 'Tăng tốc độ guồng chân và thăng bằng' },
-      ],
-      sessionResult: 'Học viên hoàn thành đầy đủ các hiệp, kỹ thuật chuẩn xác và biên độ tối ưu.',
-      coachFeedback: availableAiPlan
-        ? `[Gợi ý AI]: ${availableAiPlan.slice(0, 300)}...`
-        : 'Kỹ thuật cải thiện đáng kể, biên độ chuyển động đạt chuẩn thi đấu.',
-      homework: 'Chạy bộ biến tốc HIIT 15 phút, nạp 1.8g protein/kg và ngủ đủ 8 tiếng.',
+        : prev.title?.trim() || `Lộ trình Thể lực Nâng cao - ${selectedStudentForPlan?.name || 'Học viên'}`,
+      goal:
+        parsed?.goal ||
+        (availableAiPlan
+          ? 'Tối ưu theo giáo án phân tích từ AI SportHub'
+          : 'Tối ưu hóa sức mạnh bộc phát, nâng cao 1RM tạ và tốc độ phản xạ thể thao'),
+      exercises:
+        parsed && parsed.exercises.length > 0 ? parsed.exercises : fallbackExercises,
+      sessionResult:
+        parsed?.sessionResult ||
+        'Học viên hoàn thành đầy đủ các hiệp, kỹ thuật chuẩn xác và biên độ tối ưu.',
+      coachFeedback:
+        parsed?.coachFeedback ||
+        'Kỹ thuật cải thiện đáng kể, biên độ chuyển động đạt chuẩn thi đấu.',
+      homework:
+        parsed?.homework ||
+        'Chạy bộ biến tốc HIIT 15 phút, nạp 1.8g protein/kg và ngủ đủ 8 tiếng.',
     }));
     showToast({
       title: 'Đã áp dụng mẫu',
-      message: availableAiPlan ? 'Đã tích hợp nội dung phân tích từ AI vào giáo án.' : 'Đã điền giáo án thể lực chuẩn khoa học.',
+      message: parsed
+        ? `Đã bóc tách ${parsed.exercises.length || fallbackExercises.length} bài tập và nhận xét từ AI vào biểu mẫu.`
+        : 'Đã điền giáo án thể lực chuẩn khoa học.',
       type: 'info',
     });
   };
@@ -1044,11 +1095,12 @@ export default function CoachStudentsPage() {
                     </span>
                     <button
                       type="button"
-                      onClick={handleFillAiTemplate}
-                      className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] transition shadow-xs cursor-pointer flex items-center gap-1"
+                      disabled={fillingAiTemplate}
+                      onClick={() => void handleFillAiTemplate()}
+                      className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-bold text-[11px] transition shadow-xs cursor-pointer flex items-center gap-1 disabled:opacity-60"
                     >
                       <span className="material-symbols-outlined text-[14px]">bolt</span>
-                      Điền mẫu gợi ý AI
+                      {fillingAiTemplate ? 'Đang phân tích AI...' : 'Điền mẫu gợi ý AI'}
                     </button>
                   </div>
 
@@ -1162,7 +1214,7 @@ export default function CoachStudentsPage() {
                     <textarea
                       rows="2"
                       value={planForm.sessionResult}
-                      onChange={(e) => setPlanForm({ ...planForm, sessionResult: cleanMarkdownText(e.target.value) })}
+                      onChange={(e) => setPlanForm({ ...planForm, sessionResult: e.target.value })}
                       placeholder="VD: Squat 75kg 4x10 mượt mà. 1RM Squat ước tính đạt 95kg. Thời gian hoàn thành 45 phút."
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-orange-500 bg-slate-50 focus:bg-white"
                     />
@@ -1177,7 +1229,7 @@ export default function CoachStudentsPage() {
                     <textarea
                       rows="2"
                       value={planForm.coachFeedback}
-                      onChange={(e) => setPlanForm({ ...planForm, coachFeedback: cleanMarkdownText(e.target.value) })}
+                      onChange={(e) => setPlanForm({ ...planForm, coachFeedback: e.target.value })}
                       placeholder="VD: Cảm giác bóng và bộ chân di chuyển tiến bộ rõ rệt. Cần chú ý giữ nhịp thở đều ở set thứ 4."
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-orange-500 bg-slate-50 focus:bg-white"
                     />
@@ -1192,7 +1244,7 @@ export default function CoachStudentsPage() {
                     <textarea
                       rows="2"
                       value={planForm.homework}
-                      onChange={(e) => setPlanForm({ ...planForm, homework: cleanMarkdownText(e.target.value) })}
+                      onChange={(e) => setPlanForm({ ...planForm, homework: e.target.value })}
                       placeholder="VD: Chạy bộ nhẹ 20 phút các ngày nghỉ. Bổ sung đủ 1.8g protein/kg và ngủ đủ 7-8 tiếng."
                       className="w-full px-3 py-2 rounded-xl border border-slate-200 text-xs focus:ring-2 focus:ring-orange-500 bg-slate-50 focus:bg-white"
                     />
@@ -1852,7 +1904,7 @@ export default function CoachStudentsPage() {
                         type="button"
                         onClick={() => {
                           setAiModalContext(null);
-                          void openPlanModal(aiStudent);
+                          void openPlanModal(aiStudent, aiSession);
                         }}
                         className="inline-flex items-center gap-1 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition shadow-xs cursor-pointer"
                       >

@@ -557,7 +557,7 @@ export default function MemberAIAssistantPage() {
             </form>
 
             <p className="text-[11px] leading-relaxed text-slate-500">
-              Khi gửi câu hỏi, hệ thống chuyển mục tiêu, chỉ số sức khỏe và lịch lớp liên quan (nếu có) tới OpenAI để tạo trả lời.
+              Khi gửi câu hỏi, hệ thống chuyển mục tiêu, chỉ số sức khỏe và lịch lớp liên quan (nếu có) tới Gemini để tạo trả lời.
               Không gửi tên hoặc số điện thoại. Gợi ý không thay thế tư vấn y tế.
             </p>
           </section>

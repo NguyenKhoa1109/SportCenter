@@ -1,6 +1,21 @@
 import React from 'react';
 import PortalLayout from './PortalLayout';
 import { useApp } from '../../context/AppContext';
+import { apiRequest } from '../../services/apiClient';
+import { exportToCsv } from '../../utils/csvExporter';
+
+const toLocalDateStr = (date) => {
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const day = String(date.getDate()).padStart(2, '0');
+  return `${year}-${month}-${day}`;
+};
+
+const toMondayStr = (date) => {
+  const monday = new Date(date);
+  monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+  return toLocalDateStr(monday);
+};
 
 export default function AdminLayout({ children }) {
   const { currentUser, showToast } = useApp();
@@ -70,6 +85,13 @@ export default function AdminLayout({ children }) {
       subtitle: 'Danh sách HLV, lễ tân, tài khoản người dùng',
     },
     {
+      label: 'Xử lý Khiếu nại',
+      path: '/admin/tickets',
+      icon: 'support_agent',
+      section: 'Nhân sự & Hội viên',
+      subtitle: 'Theo dõi và phản hồi các ticket khiếu nại từ hội viên',
+    },
+    {
       label: 'Đối soát thanh toán dư',
       path: '/admin/payment-reconciliation',
       icon: 'payments',
@@ -108,28 +130,60 @@ export default function AdminLayout({ children }) {
       quickAction={{
         label: 'Xuất Báo Cáo',
         icon: 'download',
-        onClick: () => {
-          showToast('Xuất báo cáo', 'Đang kết xuất và tải xuống bản báo cáo vận hành trung tâm...', 'success');
-          const csvContent = "\uFEFF" + 
-            "BÁO CÁO VẬN HÀNH & DOANH THU TRUNG TÂM THỂ THAO SPORT HUB\n" +
-            "Ngày xuất," + new Date().toLocaleDateString('vi-VN') + "\n\n" +
-            "CHỈ SỐ TỔNG QUAN,GIÁ TRỊ\n" +
-            "Tổng doanh thu tháng,158.450.000 VNĐ\n" +
-            "Hội viên mới,42 hội viên\n" +
-            "Tổng lượt check-in qua cổng,586 lượt\n" +
-            "Tỷ lệ lấp đầy sân & lớp,88.5%\n\n" +
-            "DOANH THU THEO PHƯƠNG THỨC THANH TOÁN,SỐ TIỀN,SỐ LƯỢNG GIAO DỊCH\n" +
-            "Thanh toán trực tuyến VNPay,94.200.000 VNĐ,142\n" +
-            "Tiền mặt tại quầy POS,38.150.000 VNĐ,58\n" +
-            "Thẻ ngân hàng / POS,26.100.000 VNĐ,35\n";
-          const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-          const url = URL.createObjectURL(blob);
-          const link = document.createElement('a');
-          link.href = url;
-          link.setAttribute('download', `BaoCao_VanHanh_SportHub_${new Date().toISOString().slice(0, 10)}.csv`);
-          document.body.appendChild(link);
-          link.click();
-          document.body.removeChild(link);
+        onClick: async () => {
+          const today = new Date();
+          const todayStr = toLocalDateStr(today);
+          const weekStartStr = toMondayStr(today);
+          try {
+            const [report, schedule, checkIns] = await Promise.all([
+              apiRequest(`/receptionist/report?date=${todayStr}`),
+              apiRequest(`/bookings/receptionist-schedule?weekStart=${weekStartStr}`).catch(() => []),
+              apiRequest('/receptionist/check-ins').catch(() => []),
+            ]);
+            const todayClasses = Array.isArray(schedule)
+              ? schedule.filter((item) => item.startTime?.slice(0, 10) === todayStr)
+              : [];
+            const bookedSeats = todayClasses.reduce((sum, item) => sum + (item.bookedSlots || 0), 0);
+            const maxSeats = todayClasses.reduce((sum, item) => sum + (item.maxSlots || 0), 0);
+            const fillPercent = maxSeats > 0 ? ((bookedSeats / maxSeats) * 100).toFixed(1) : '0.0';
+            const todayCheckIns = Array.isArray(checkIns)
+              ? checkIns.filter((c) => String(c.checkedInAt || c.checkInTime || c.createdAt || '').slice(0, 10) === todayStr)
+              : [];
+
+            const rows = [
+              ['BÁO CÁO VẬN HÀNH & DOANH THU TRUNG TÂM THỂ THAO F SPORT'],
+              ['Ngày báo cáo', todayStr],
+              ['Xuất lúc', today.toLocaleString('vi-VN')],
+              [],
+              ['CHỈ SỐ TỔNG QUAN', 'GIÁ TRỊ'],
+              ['Tổng doanh thu trong ngày (VNĐ)', report?.totalRevenue ?? 0],
+              ['Giao dịch hoàn tất', report?.completedPayments ?? 0],
+              ['Hội viên mới trong ngày', report?.newMembers ?? 0],
+              ['Lượt check-in cổng trong ngày', todayCheckIns.length],
+              ['Tỷ lệ lấp đầy lớp hôm nay', `${fillPercent}%`],
+              [],
+              ['DOANH THU THEO PHƯƠNG THỨC THANH TOÁN', 'SỐ TIỀN (VNĐ)', 'SỐ GIAO DỊCH'],
+              ...((report?.paymentMethods || []).length > 0
+                ? report.paymentMethods.map((m) => [m.method || 'Khác', m.amount ?? 0, m.count ?? 0])
+                : [['Chưa phát sinh giao dịch', 0, 0]]),
+              [],
+              ['LỊCH LỚP HỌC TRONG NGÀY', 'HLV', 'GIỜ BẮT ĐẦU', 'ĐÃ ĐẶT', 'TỐI ĐA'],
+              ...((todayClasses.length > 0)
+                ? todayClasses.map((c) => [
+                    c.className || 'Lớp học',
+                    c.coachName || 'Chưa gán',
+                    c.startTime || '',
+                    c.bookedSlots ?? 0,
+                    c.maxSlots ?? 0,
+                  ])
+                : [['Không có lớp trong ngày', '', '', 0, 0]]),
+            ];
+
+            exportToCsv(`BaoCao_VanHanh_SportHub_${todayStr}.csv`, rows);
+            showToast('Xuất báo cáo', `Đã tải xuống báo cáo vận hành thực tế ngày ${todayStr}.`, 'success');
+          } catch (err) {
+            showToast('Lỗi xuất báo cáo', err?.message || 'Không thể lấy dữ liệu báo cáo từ máy chủ.', 'error');
+          }
         },
       }}
     >

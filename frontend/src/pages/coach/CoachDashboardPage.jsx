@@ -136,8 +136,12 @@ export default function CoachDashboardPage() {
     },
   ];
 
-  const ratingAvg = feedbackStats?.averageRating || 4.9;
-  const ratingCount = feedbackStats?.totalFeedbacks || 18;
+  const rawAverage = feedbackStats?.average ?? feedbackStats?.averageRating;
+  const ratingAvg =
+    rawAverage != null && Number.isFinite(Number(rawAverage))
+      ? Number(rawAverage).toFixed(1)
+      : '0.0';
+  const ratingCount = feedbackStats?.count ?? feedbackStats?.totalFeedbacks ?? 0;
 
   return (
     <CoachLayout>
