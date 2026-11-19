@@ -508,6 +508,7 @@ OUTER APPLY (
     ORDER BY coach.user_id
 ) anyCoach
 WHERE COALESCE(preferredCoach.user_id, anyCoach.user_id) IS NOT NULL
+  AND CAST(classTime.start_time AS DATE) <> '2026-11-20'
   AND NOT EXISTS (
       SELECT 1
       FROM dbo.class_sessions existing
