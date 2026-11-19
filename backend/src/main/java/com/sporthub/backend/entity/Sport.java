@@ -6,8 +6,6 @@ import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
 
-import java.util.Objects;
-
 @Entity
 @Table(name = "sports")
 @Getter
@@ -29,17 +27,5 @@ public class Sport {
     @JsonProperty("name")
     public String getName() {
         return sportName;
-    }
-
-    @Override
-    public boolean equals(Object o) {
-        if (this == o) return true;
-        if (!(o instanceof Sport other)) return false;
-        return sportId != null && Objects.equals(sportId, other.sportId);
-    }
-
-    @Override
-    public int hashCode() {
-        return getClass().hashCode();
     }
 }

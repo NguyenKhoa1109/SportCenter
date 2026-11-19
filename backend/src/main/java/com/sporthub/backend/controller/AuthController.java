@@ -135,13 +135,8 @@ public class AuthController {
             // Logic theo status
             String status = user.getStatus();
             if ("PENDING".equalsIgnoreCase(status)) {
-                if (!"MEMBER".equalsIgnoreCase(user.getRole())) {
-                    response.put("message", "Email này đã đăng ký tài khoản nhân sự và đang chờ Quản lý phê duyệt.");
-                    response.put("suggestion", "WAIT_FOR_APPROVAL");
-                } else {
-                    response.put("message", "Email này đang chờ xác thực OTP. Bạn có thể đăng nhập để nhận lại mã OTP.");
-                    response.put("suggestion", "LOGIN_TO_RESEND_OTP");
-                }
+                response.put("message", "Email này đang chờ xác thực OTP. Bạn có thể đăng nhập để nhận lại mã OTP.");
+                response.put("suggestion", "LOGIN_TO_RESEND_OTP");
             } else if ("ACTIVE".equalsIgnoreCase(status)) {
                 response.put("message", String.format(
                     "Email đã được sử dụng bởi %s (%s) và đang hoạt động.",

@@ -211,42 +211,4 @@ class ReceptionistControllerTest {
         assertEquals(true, res.get("ok"));
         assertEquals("data:image/jpeg;base64,newavatar", res.get("avatar"));
     }
-
-    @Test
-    void createCoachValidatesAndPersistsSelectedSports() {
-        var domainSportRepository = mock(com.sporthub.backend.repository.SportRepository.class);
-        var badminton = new com.sporthub.backend.entity.Sport();
-        badminton.setSportId(6L);
-        badminton.setSportName("Cầu lông");
-        when(domainSportRepository.findAllByOrderBySportIdAsc()).thenReturn(List.of(badminton));
-        when(domainSportRepository.findAllById(List.of(6L))).thenReturn(List.of(badminton));
-        org.springframework.test.util.ReflectionTestUtils.setField(controller, "domainSportRepository", domainSportRepository);
-
-        assertEquals(1, controller.getDomainSports(receptionist).size());
-
-        when(authService.findUserByEmail("coach.rec@example.com")).thenReturn(java.util.Optional.empty());
-        when(userRepository.save(any(User.class))).thenAnswer(inv -> {
-            User saved = inv.getArgument(0);
-            saved.setUserId(88L);
-            return saved;
-        });
-
-        var missingSports = new com.sporthub.backend.dto.CreateUserRequest(
-                "HLV Thiếu Môn", "coach.rec@example.com", "0912345679", "SportHub@123", "COACH");
-        var badEx = org.junit.jupiter.api.Assertions.assertThrows(
-                org.springframework.web.server.ResponseStatusException.class,
-                () -> controller.createUser(missingSports, receptionist));
-        assertEquals(400, badEx.getStatusCode().value());
-
-        var validCoach = new com.sporthub.backend.dto.CreateUserRequest(
-                "HLV Cầu Lông", "coach.rec@example.com", "0912345679", "SportHub@123",
-                "COACH", List.of(6L), null);
-        var res = controller.createUser(validCoach, receptionist);
-        assertEquals(88L, res.userId());
-        org.mockito.Mockito.verify(userRepository).save(org.mockito.ArgumentMatchers.argThat(
-                u -> "Cầu lông".equals(u.getSpecialty())
-                        && "COACH".equals(u.getRole())
-                        && u.getCoachedSports() != null
-                        && u.getCoachedSports().stream().anyMatch(s -> Long.valueOf(6L).equals(s.getSportId()))));
-    }
 }

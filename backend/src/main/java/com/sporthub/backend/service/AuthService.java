@@ -30,7 +30,6 @@ public class AuthService {
 
     private static final Logger logger = LoggerFactory.getLogger(AuthService.class);
     private static final String MEMBER_ROLE = "MEMBER";
-    private static final java.util.Set<String> SELF_REGISTRATION_ROLES = java.util.Set.of("MEMBER", "COACH", "RECEPTIONIST");
     private static final String TOKEN_TYPE_PASSWORD_RESET = "PASSWORD_RESET";
     private static final String TOKEN_TYPE_RESET_TOKEN = "RESET_TOKEN";
     private static final String TOKEN_TYPE_REGISTRATION_OTP = "REGISTRATION_OTP";
@@ -189,11 +188,8 @@ public class AuthService {
             String status = user.getStatus();
             
             if ("PENDING".equalsIgnoreCase(status)) {
-                String msg = MEMBER_ROLE.equalsIgnoreCase(user.getRole())
-                        ? "Email này đang chờ xác thực OTP. Vui lòng đăng nhập để nhận lại mã OTP."
-                        : "Email này đã đăng ký tài khoản nhân sự và đang chờ Quản lý phê duyệt.";
                 auditLogService.logFailure("REGISTER", email, user.getUserId(), "Registration attempt", "Email exists with PENDING status");
-                throw new IllegalArgumentException(msg);
+                throw new IllegalArgumentException("Email này đang chờ xác thực OTP. Vui lòng đăng nhập để nhận lại mã OTP.");
             } else if ("ACTIVE".equalsIgnoreCase(status)) {
                 auditLogService.logFailure("REGISTER", email, user.getUserId(), "Registration attempt", "Email exists with ACTIVE status");
                 throw new IllegalArgumentException(String.format("Email đã được sử dụng bởi %s (%s).", user.getFullName(), user.getRole()));
@@ -206,7 +202,7 @@ public class AuthService {
             }
         }
 
-        String targetRole = resolveRegistrationRole(request.getRole());
+        String targetRole = MEMBER_ROLE;
 
         // Rule: Member tự đăng ký phải verify OTP qua email trước khi ACTIVE; Nhân viên đăng ký chờ Manager duyệt
         User user = User.builder()
@@ -220,23 +216,6 @@ public class AuthService {
                 .build();
 
         User savedUser = userRepository.save(user);
-
-        if (!MEMBER_ROLE.equals(targetRole)) {
-            auditLogService.logSuccess(
-                    "REGISTER_STAFF_PENDING",
-                    savedUser.getEmail(),
-                    savedUser.getUserId(),
-                    "Staff self-registered as " + targetRole + " pending manager approval");
-            return AuthResponse.builder()
-                    .userId(savedUser.getUserId())
-                    .email(savedUser.getEmail())
-                    .fullName(savedUser.getFullName())
-                    .role(savedUser.getRole())
-                    .status(savedUser.getStatus())
-                    .requirePasswordChange(false)
-                    .message("Đăng ký tài khoản nhân sự thành công. Tài khoản của bạn đang chờ Quản lý phê duyệt trước khi đăng nhập.")
-                    .build();
-        }
 
         // Generate và gửi OTP qua email để verify account
         String otp = generateOTP();
@@ -730,10 +709,6 @@ public class AuthService {
             throw new RuntimeException("Tài khoản này đã được kích hoạt hoặc có trạng thái không hợp lệ.");
         }
 
-        if (!MEMBER_ROLE.equalsIgnoreCase(user.getRole())) {
-            throw new IllegalArgumentException("Tài khoản nhân sự phải được Quản lý phê duyệt.");
-        }
-
         // Tìm token trong DB (chưa dùng, chưa hết hạn)
         VerificationToken token = verificationTokenRepository
                 .findByEmailAndTokenTypeAndUsedAtIsNullAndExpiresAtAfter(
@@ -769,6 +744,9 @@ public class AuthService {
         }
 
         // OTP hợp lệ → Kích hoạt tài khoản
+        if (!MEMBER_ROLE.equalsIgnoreCase(user.getRole())) {
+            throw new IllegalArgumentException("Tài khoản nhân sự phải được Quản lý phê duyệt.");
+        }
         user.setStatus("ACTIVE");
         User savedUser = userRepository.save(user);
 
@@ -955,18 +933,6 @@ public class AuthService {
                     "Vui lòng kiểm tra email và nhập mã OTP để kích hoạt tài khoản."
             );
         }
-    }
-
-    private String resolveRegistrationRole(String rawRole) {
-        if (rawRole == null || rawRole.isBlank()) {
-            return MEMBER_ROLE;
-        }
-        String normalized = rawRole.trim().toUpperCase(java.util.Locale.ROOT);
-        if (!SELF_REGISTRATION_ROLES.contains(normalized)) {
-            throw new IllegalArgumentException(
-                    "Vai trò tự đăng ký chỉ hỗ trợ Hội viên (MEMBER), Huấn luyện viên (COACH) hoặc Lễ tân (RECEPTIONIST).");
-        }
-        return normalized;
     }
 
 }

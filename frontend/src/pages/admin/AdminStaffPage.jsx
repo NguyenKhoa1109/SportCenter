@@ -1,17 +1,10 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import CreateUserModal from '../../components/common/CreateUserModal';
-import CoachSportSelector from '../../components/common/CoachSportSelector';
 import { TableSkeleton } from '../../components/common/Skeleton';
 import Pagination from '../../components/common/Pagination';
 import { apiRequest } from '../../services/apiClient';
-import {
-  getManagerDomainSports,
-  getStaffPerformance,
-  updateManagerCoachSports,
-} from '../../services/managerApi';
-import { useApp } from '../../context/AppContext';
-import { resolveCoachSportIds } from '../../utils/coachSport';
+import { getStaffPerformance } from '../../services/managerApi';
 
 const PAGE_SIZE = 12;
 const ROLE_LABELS = {
@@ -38,7 +31,6 @@ const formatDate = (value) => {
 };
 
 export default function AdminStaffPage() {
-  const { showToast } = useApp();
   const [usersPage, setUsersPage] = useState({
     content: [],
     number: 0,
@@ -58,61 +50,6 @@ export default function AdminStaffPage() {
   const [performanceData, setPerformanceData] = useState(null);
   const [performanceLoading, setPerformanceLoading] = useState(false);
   const [performanceError, setPerformanceError] = useState('');
-
-  // Edit Coach Sports Modal State
-  const [sports, setSports] = useState([]);
-  const [sportsLoading, setSportsLoading] = useState(false);
-  const [editingCoach, setEditingCoach] = useState(null);
-  const [editSportIds, setEditSportIds] = useState([]);
-  const [editSportError, setEditSportError] = useState('');
-  const [savingCoachSports, setSavingCoachSports] = useState(false);
-
-  const openEditCoachSports = async (coachUser) => {
-    setEditingCoach(coachUser);
-    setEditSportError('');
-    let loadedSports = sports;
-    if (loadedSports.length === 0) {
-      setSportsLoading(true);
-      try {
-        loadedSports = await getManagerDomainSports();
-        setSports(Array.isArray(loadedSports) ? loadedSports : []);
-      } catch (err) {
-        loadedSports = [];
-        setEditSportError(err.message || 'Không thể tải danh sách bộ môn.');
-      } finally {
-        setSportsLoading(false);
-      }
-    }
-    setEditSportIds(resolveCoachSportIds(coachUser, loadedSports));
-  };
-
-  const handleSaveCoachSports = async (e) => {
-    e.preventDefault();
-    if (!editingCoach) return;
-    if (editSportIds.length === 0) {
-      setEditSportError('Vui lòng chọn ít nhất một bộ môn giảng dạy cho Huấn luyện viên.');
-      return;
-    }
-    setSavingCoachSports(true);
-    setEditSportError('');
-    try {
-      await updateManagerCoachSports(editingCoach.userId, {
-        sportIds: editSportIds.map(Number),
-      });
-      showToast(
-        'Cập nhật bộ môn thành công',
-        `Đã cập nhật bộ môn giảng dạy cho HLV "${editingCoach.fullName}".`,
-        'success'
-      );
-      setEditingCoach(null);
-      await loadUsers();
-      if (performanceData) loadPerformance();
-    } catch (err) {
-      setEditSportError(err.message || 'Không thể cập nhật bộ môn của Huấn luyện viên.');
-    } finally {
-      setSavingCoachSports(false);
-    }
-  };
 
   const loadPerformance = useCallback(async () => {
     setPerformanceLoading(true);
@@ -293,17 +230,14 @@ export default function AdminStaffPage() {
                   <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
                     <tr>
                       <th className="px-5 py-3 font-semibold">Tài khoản</th>
-                      <th className="px-5 py-3 font-semibold">Vai trò &amp; Bộ môn</th>
+                      <th className="px-5 py-3 font-semibold">Vai trò</th>
                       <th className="px-5 py-3 font-semibold">Số điện thoại</th>
                       <th className="px-5 py-3 font-semibold">Trạng thái</th>
                       <th className="px-5 py-3 font-semibold">Ngày tạo</th>
-                      <th className="px-5 py-3 font-semibold text-right">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {usersPage.content.map((user) => {
-                      const isCoach = user.role?.toUpperCase() === 'COACH';
-                      return (
+                    {usersPage.content.map((user) => (
                       <tr key={user.userId} className="hover:bg-slate-50/70">
                         <td className="px-5 py-4">
                           <p className="font-semibold text-slate-900">{user.fullName}</p>
@@ -311,18 +245,7 @@ export default function AdminStaffPage() {
                           <p className="mt-0.5 text-xs text-slate-400">Mã tài khoản: {user.userId}</p>
                         </td>
                         <td className="px-5 py-4 text-slate-700">
-                          <span className="font-medium block">
-                            {ROLE_LABELS[user.role?.toUpperCase()] || user.role}
-                          </span>
-                          {isCoach && (
-                            <span className={`mt-1 inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                              user.specialty
-                                ? 'bg-orange-50 text-orange-800 border border-orange-200'
-                                : 'bg-amber-50 text-amber-800 border border-amber-200'
-                            }`}>
-                              {user.specialty || 'Chưa gán bộ môn'}
-                            </span>
-                          )}
+                          {ROLE_LABELS[user.role?.toUpperCase()] || user.role}
                         </td>
                         <td className="px-5 py-4 text-slate-600">{user.phone || '—'}</td>
                         <td className="px-5 py-4">
@@ -333,23 +256,8 @@ export default function AdminStaffPage() {
                           </span>
                         </td>
                         <td className="px-5 py-4 text-slate-600">{formatDate(user.createdAt)}</td>
-                        <td className="px-5 py-4 text-right">
-                          {isCoach ? (
-                            <button
-                              type="button"
-                              onClick={() => openEditCoachSports(user)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors cursor-pointer"
-                            >
-                              <span className="material-symbols-outlined text-[15px]">sports</span>
-                              Gán bộ môn
-                            </button>
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
-                        </td>
                       </tr>
-                    );
-                    })}
+                    ))}
                   </tbody>
                 </table>
               </div>
@@ -592,61 +500,6 @@ export default function AdminStaffPage() {
         onClose={() => setIsCreateOpen(false)}
         onSuccess={loadUsers}
       />
-
-      {editingCoach && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs !m-0">
-          <div className="relative w-full max-w-md overflow-hidden bg-white rounded-2xl border border-slate-200 shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
-              <div>
-                <h2 className="text-base font-bold text-slate-900">Gán bộ môn cho HLV</h2>
-                <p className="text-xs text-slate-500">
-                  {editingCoach.fullName} ({editingCoach.email})
-                </p>
-              </div>
-              <button
-                type="button"
-                onClick={() => setEditingCoach(null)}
-                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
-              >
-                <span className="material-symbols-outlined text-[20px]">close</span>
-              </button>
-            </div>
-
-            <form onSubmit={handleSaveCoachSports} className="p-6 space-y-4">
-              {editSportError && (
-                <div role="alert" className="p-3 rounded-xl border border-red-200 bg-red-50 text-xs font-bold text-red-700">
-                  {editSportError}
-                </div>
-              )}
-
-              <CoachSportSelector
-                sports={sports}
-                selectedIds={editSportIds}
-                onChange={setEditSportIds}
-                loading={sportsLoading}
-              />
-
-              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setEditingCoach(null)}
-                  disabled={savingCoachSports}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  disabled={savingCoachSports || sportsLoading}
-                  className="px-5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider shadow-sm disabled:opacity-50 cursor-pointer"
-                >
-                  {savingCoachSports ? 'Đang lưu...' : 'Lưu bộ môn'}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
     </AdminLayout>
   );
 }

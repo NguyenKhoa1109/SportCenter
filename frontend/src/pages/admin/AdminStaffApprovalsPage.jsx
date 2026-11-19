@@ -2,16 +2,13 @@ import React, { useCallback, useEffect, useState } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { useApp } from '../../context/AppContext';
 import { TableSkeleton } from '../../components/common/Skeleton';
-import CoachSportSelector from '../../components/common/CoachSportSelector';
 import {
   approveStaffRegistration,
   getPendingStaffRegistrations,
   rejectStaffRegistration,
   getManagerCoaches,
-  getManagerDomainSports,
 } from '../../services/managerApi';
 import { apiRequest } from '../../services/apiClient';
-import { coachTeachesSport, resolveCoachSportIds } from '../../utils/coachSport';
 
 const formatDate = (value) => {
   if (!value) return '—';
@@ -53,11 +50,6 @@ export default function AdminStaffApprovalsPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [processingId, setProcessingId] = useState(null);
-  const [sports, setSports] = useState([]);
-  const [sportsLoading, setSportsLoading] = useState(false);
-  const [approveStaffModal, setApproveStaffModal] = useState(null);
-  const [approveCoachSportIds, setApproveCoachSportIds] = useState([]);
-  const [approveCoachSportError, setApproveCoachSportError] = useState('');
 
   // Tab 2: Membership approvals (Section 5.2)
   const [pendingMemberships, setPendingMemberships] = useState([]);
@@ -78,17 +70,15 @@ export default function AdminStaffApprovalsPage() {
     setLoading(true);
     setError('');
     try {
-      const [data, coachesRes, sportsRes, leaveRes, refundRes, pendingMemRes] = await Promise.all([
+      const [data, coachesRes, leaveRes, refundRes, pendingMemRes] = await Promise.all([
         getPendingStaffRegistrations().catch(() => []),
         getManagerCoaches().catch(() => ({ content: [] })),
-        getManagerDomainSports().catch(() => []),
         apiRequest('/manager/coach-leave-requests').catch(() => []),
         apiRequest('/manager/refunds').catch(() => []),
         apiRequest('/manager/memberships/pending').catch(() => []),
       ]);
       setRegistrations(Array.isArray(data) ? data : []);
       setAvailableCoaches(coachesRes.content || []);
-      setSports(Array.isArray(sportsRes) ? sportsRes : []);
       setCoachLeaveRequests(Array.isArray(leaveRes) ? leaveRes : []);
       setRefundRequests(Array.isArray(refundRes) ? refundRes : []);
       setPendingMemberships(Array.isArray(pendingMemRes) ? pendingMemRes : []);
@@ -103,72 +93,8 @@ export default function AdminStaffApprovalsPage() {
     loadRegistrations();
   }, [loadRegistrations]);
 
-  const getCoachSportsLabel = (coach) => {
-    if (coach?.specialty && String(coach.specialty).trim()) {
-      return String(coach.specialty).trim();
-    }
-    if (Array.isArray(coach?.sportIds) && coach.sportIds.length > 0) {
-      const names = coach.sportIds
-        .map((id) => sports.find((s) => String(s.sportId) === String(id)))
-        .map((s) => s?.sportName || s?.name)
-        .filter(Boolean);
-      if (names.length > 0) return names.join(', ');
-    }
-    return 'Chưa phân môn';
-  };
-
   // Tab 1: Staff Approval handlers
-  const handleOpenApproveCoachModal = async (registration) => {
-    setApproveStaffModal(registration);
-    setApproveCoachSportError('');
-    let loadedSports = sports;
-    if (loadedSports.length === 0) {
-      setSportsLoading(true);
-      try {
-        loadedSports = await getManagerDomainSports();
-        setSports(Array.isArray(loadedSports) ? loadedSports : []);
-      } catch (err) {
-        loadedSports = [];
-        setApproveCoachSportError(err.message || 'Không thể tải danh sách bộ môn.');
-      } finally {
-        setSportsLoading(false);
-      }
-    }
-    setApproveCoachSportIds(resolveCoachSportIds(registration, loadedSports));
-  };
-
-  const handleConfirmApproveStaffCoach = async (e) => {
-    e.preventDefault();
-    if (!approveStaffModal) return;
-    if (approveCoachSportIds.length === 0) {
-      setApproveCoachSportError('Vui lòng chọn ít nhất một bộ môn giảng dạy cho Huấn luyện viên.');
-      return;
-    }
-    setProcessingId(approveStaffModal.userId);
-    setApproveCoachSportError('');
-    try {
-      await approveStaffRegistration(approveStaffModal.userId, {
-        sportIds: approveCoachSportIds.map(Number),
-      });
-      showToast(
-        'Đã duyệt & phân công bộ môn',
-        `${approveStaffModal.fullName} đã được kích hoạt với bộ môn giảng dạy đã chọn.`,
-        'success',
-      );
-      setApproveStaffModal(null);
-      await loadRegistrations();
-    } catch (requestError) {
-      setApproveCoachSportError(requestError.message || 'Không thể phê duyệt Huấn luyện viên.');
-    } finally {
-      setProcessingId(null);
-    }
-  };
-
   const handleDecision = async (registration, decision) => {
-    if (decision === 'approve' && registration.role?.toUpperCase() === 'COACH') {
-      await handleOpenApproveCoachModal(registration);
-      return;
-    }
     setProcessingId(registration.userId);
     setError('');
     try {
@@ -237,25 +163,13 @@ export default function AdminStaffApprovalsPage() {
   const handleConfirmApproveLeave = async () => {
     if (!approveLeaveModal || !confirmReassignNotice) return;
     const req = approveLeaveModal;
-    const affectedSessions = Array.isArray(req.affectedSessions) ? req.affectedSessions : [];
-    const sessionReassignments = {};
-    for (const session of affectedSessions) {
-      const selectedCoachId = reassignForm[session.sessionId];
-      if (!selectedCoachId) {
-        showToast('Thiếu HLV thay thế', 'Vui lòng chọn HLV thay thế phù hợp bộ môn cho tất cả các ca bị ảnh hưởng.', 'error');
-        return;
-      }
-      sessionReassignments[session.sessionId] = Number(selectedCoachId);
-    }
-    const primaryCoachId = affectedSessions.length > 0 ? sessionReassignments[affectedSessions[0].sessionId] : null;
 
     try {
       await apiRequest(`/manager/coach-leave-requests/${req.requestId}/decision`, {
         method: 'POST',
         body: JSON.stringify({
           approved: true,
-          reassignedCoachId: primaryCoachId,
-          sessionReassignments: affectedSessions.length > 0 ? sessionReassignments : null,
+          reassignedCoachId: Object.values(reassignForm)[0] || null,
         }),
       });
       showToast(
@@ -288,45 +202,29 @@ export default function AdminStaffApprovalsPage() {
 
   // Tab 4: Refund Approval (MGR-16)
   const handleDecisionRefund = async (refund, isApprove) => {
-    setProcessingId(`refund-${refund.refundId}`);
     try {
-      const updated = await apiRequest(`/manager/refunds/${refund.refundId}/decision`, {
+      await apiRequest(`/manager/refunds/${refund.refundId}/decision`, {
         method: 'POST',
         body: JSON.stringify({
           approved: isApprove,
           decisionNote: isApprove ? 'Đã duyệt hoàn tiền' : 'Từ chối hoàn tiền',
         }),
       });
-      if (updated && updated.refundId) {
-        setRefundRequests((prev) =>
-          prev.map((item) => (item.refundId === updated.refundId ? updated : item))
-        );
-      }
-      if (isApprove && updated?.status !== 'APPROVED' && updated?.status !== 'COMPLETED') {
-        showToast(
-          'Hoàn tiền chưa thành công',
-          updated?.decisionNote || 'Cần đối soát cổng thanh toán trước khi thử lại.',
-          'error'
-        );
-      } else {
-        showToast(
-          isApprove ? 'Đã duyệt hoàn tiền' : 'Đã từ chối hoàn tiền',
-          `Lệnh hoàn ${formatPrice(refund.refundAmount)} cho ${refund.memberName} đã được cập nhật.`,
-          isApprove ? 'success' : 'info'
-        );
-      }
+      showToast(
+        isApprove ? 'Đã duyệt hoàn tiền' : 'Đã từ chối hoàn tiền',
+        `Lệnh hoàn ${formatPrice(refund.refundAmount)} cho ${refund.memberName} đã được cập nhật.`,
+        isApprove ? 'success' : 'info'
+      );
       await loadRegistrations();
     } catch (err) {
       showToast('Lỗi xử lý hoàn tiền', err.message || 'Không thể xử lý yêu cầu hoàn tiền.', 'error');
-    } finally {
-      setProcessingId(null);
     }
   };
 
   const pendingStaffCount = registrations.length;
   const pendingMemCount = pendingMemberships.filter((m) => m.status === 'PENDING_APPROVAL').length;
   const pendingLeaveCount = coachLeaveRequests.filter((r) => r.status === 'PENDING').length;
-  const pendingRefundCount = refundRequests.filter((r) => ['PENDING_APPROVAL', 'PENDING'].includes(r.status)).length;
+  const pendingRefundCount = refundRequests.filter((r) => r.status === 'PENDING_APPROVAL').length;
 
   return (
     <AdminLayout>
@@ -430,11 +328,6 @@ export default function AdminStaffApprovalsPage() {
                           <span className="inline-flex items-center justify-center whitespace-nowrap px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 font-bold border border-purple-200">
                             {user.role}
                           </span>
-                          {user.specialty && (
-                            <span className="block mt-1 text-[11px] font-medium text-slate-500 whitespace-normal max-w-[200px]">
-                              Bộ môn: {user.specialty}
-                            </span>
-                          )}
                         </td>
                         <td className="px-5 py-4 text-slate-600 whitespace-nowrap">{formatDate(user.createdAt)}</td>
                         <td className="px-5 py-4 text-right whitespace-nowrap">
@@ -643,7 +536,7 @@ export default function AdminStaffApprovalsPage() {
                           <td className="px-5 py-4 max-w-xs text-slate-600">{req.reason}</td>
                           <td className="px-5 py-4 whitespace-nowrap">
                             <span className="px-2 py-0.5 rounded-md bg-amber-50 text-amber-800 font-bold border border-amber-200 whitespace-nowrap">
-                              {req.affectedBookingsCount ?? 0} lượt đặt
+                              {req.affectedBookingsCount || 2} ca học/PT
                             </span>
                           </td>
                           <td className="px-5 py-4 whitespace-nowrap">
@@ -735,8 +628,7 @@ export default function AdminStaffApprovalsPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {refundRequests.map((ref) => {
-                      const isPending = ['PENDING_APPROVAL', 'PENDING'].includes(ref.status);
-                      const isProcessingRefund = processingId === `refund-${ref.refundId}`;
+                      const isPending = ref.status === 'PENDING_APPROVAL';
                       return (
                         <tr key={ref.refundId} className="hover:bg-slate-50">
                           <td className="px-5 py-4">
@@ -750,14 +642,7 @@ export default function AdminStaffApprovalsPage() {
                           <td className="px-5 py-4 text-slate-600 whitespace-nowrap">
                             {formatDate(ref.createdAt)}
                           </td>
-                          <td className="px-5 py-4 max-w-xs text-slate-600">
-                            <p>{ref.reason}</p>
-                            {ref.decisionNote && (
-                              <p className={`mt-1 text-[11px] font-semibold ${isPending ? 'text-amber-700' : 'text-slate-500'}`}>
-                                Ghi chú: {ref.decisionNote}
-                              </p>
-                            )}
-                          </td>
+                          <td className="px-5 py-4 max-w-xs text-slate-600">{ref.reason}</td>
                           <td className="px-5 py-4 whitespace-nowrap">
                             <span
                               className={`inline-flex items-center justify-center whitespace-nowrap px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
@@ -776,19 +661,17 @@ export default function AdminStaffApprovalsPage() {
                               <div className="flex items-center justify-end gap-2 whitespace-nowrap">
                                 <button
                                   type="button"
-                                  disabled={isProcessingRefund}
                                   onClick={() => handleDecisionRefund(ref, false)}
-                                  className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
+                                  className="px-3 py-1.5 rounded-lg border border-red-200 text-red-700 hover:bg-red-50 text-xs font-bold transition-all cursor-pointer whitespace-nowrap shrink-0"
                                 >
                                   Từ chối
                                 </button>
                                 <button
                                   type="button"
-                                  disabled={isProcessingRefund}
                                   onClick={() => handleDecisionRefund(ref, true)}
-                                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase transition-all shadow-2xs cursor-pointer whitespace-nowrap shrink-0 disabled:opacity-50"
+                                  className="px-4 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold uppercase transition-all shadow-2xs cursor-pointer whitespace-nowrap shrink-0"
                                 >
-                                  {isProcessingRefund ? 'Đang xử lý...' : 'Phê duyệt hoàn'}
+                                  Phê duyệt hoàn
                                 </button>
                               </div>
                             ) : (
@@ -844,198 +727,104 @@ export default function AdminStaffApprovalsPage() {
         </div>
       )}
 
-      {/* Tab 1 Coach Sport Assignment Approval Modal */}
-      {approveStaffModal && (
+      {/* MGR-24 Coach Leave Approval & Reassignment Modal */}
+      {approveLeaveModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 !m-0">
-          <div className="relative w-full max-w-lg overflow-hidden bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 sm:p-7 space-y-4">
-            <div className="flex items-start justify-between border-b border-slate-100 pb-3">
+          <div className="relative w-full max-w-xl overflow-hidden bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-4 max-h-[90vh] flex flex-col">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
               <div>
                 <h3 className="text-base font-bold text-slate-900">
-                  Phê duyệt &amp; Phân công bộ môn Huấn luyện viên
+                  Xác nhận duyệt nghỉ &amp; Phân công Coach thay thế
                 </h3>
-                <p className="text-xs text-slate-500 mt-0.5">
-                  {approveStaffModal.fullName} ({approveStaffModal.email})
-                </p>
+                <p className="text-xs text-slate-500">Coach: {approveLeaveModal.coachName} · {approveLeaveModal.startDate} → {approveLeaveModal.endDate}</p>
               </div>
               <button
                 type="button"
-                onClick={() => setApproveStaffModal(null)}
+                onClick={() => setApproveLeaveModal(null)}
                 className="text-slate-400 hover:text-slate-700 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[20px]">close</span>
               </button>
             </div>
 
-            <form onSubmit={handleConfirmApproveStaffCoach} className="space-y-4">
-              {approveCoachSportError && (
-                <p role="alert" className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-xs font-bold text-red-700">
-                  {approveCoachSportError}
+            <div className="space-y-4 flex-1 overflow-y-auto pr-1">
+              <div className="p-3.5 bg-orange-50/80 border border-orange-200 rounded-xl text-xs text-orange-900 space-y-1">
+                <strong>Quy định:</strong>
+                <p className="text-[11px] leading-relaxed">
+                  Có {approveLeaveModal.affectedBookingsCount || 2} booking lớp/PT bị ảnh hưởng trong khoảng thời gian nghỉ này.
+                  Manager phải chọn Coach thay thế cho từng ca. Hệ thống sẽ tự động gửi thông báo cho khách và <strong>KHÔNG thu thêm bất kỳ phụ phí nào</strong>.
                 </p>
-              )}
-
-              <CoachSportSelector
-                sports={sports}
-                selectedIds={approveCoachSportIds}
-                onChange={(ids) => {
-                  setApproveCoachSportIds(ids);
-                  setApproveCoachSportError('');
-                }}
-                loading={sportsLoading}
-              />
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setApproveStaffModal(null)}
-                  disabled={processingId === approveStaffModal.userId}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="submit"
-                  disabled={processingId === approveStaffModal.userId || sportsLoading}
-                  className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all cursor-pointer"
-                >
-                  {processingId === approveStaffModal.userId ? 'Đang xử lý...' : 'Xác nhận duyệt & Phân môn'}
-                </button>
               </div>
-            </form>
+
+              <div className="space-y-3">
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Các ca giảng dạy cần chuyển lịch:</span>
+                {(approveLeaveModal.affectedBookings || [
+                  { id: 201, time: '25/10/2026 08:00 - 09:30', name: 'Lớp Pickleball Cơ Bản', member: 'Lớp Nhóm (6 học viên)' },
+                  { id: 202, time: '25/10/2026 15:00 - 16:00', name: 'Tập PT 1-1 Tennis', member: 'Trần Văn Nam (Thẻ VIP)' },
+                ]).map((booking) => (
+                  <div key={booking.id} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
+                    <div className="flex justify-between items-start text-xs">
+                      <div>
+                        <strong className="block text-slate-900 font-bold">{booking.name}</strong>
+                        <span className="text-slate-500 text-[11px]">{booking.time} · {booking.member}</span>
+                      </div>
+                      <span className="px-2 py-0.5 rounded-md bg-orange-100 text-orange-800 text-[10px] font-bold">Cần Coach mới</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 pt-1">
+                      <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">Coach thay thế:</span>
+                      <select
+                        value={reassignForm[booking.id] || ''}
+                        onChange={(e) => setReassignForm({ ...reassignForm, [booking.id]: e.target.value })}
+                        className="w-full p-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 outline-none focus:border-orange-500 cursor-pointer"
+                      >
+                        <option value="">-- Chọn Coach đảm nhiệm ca này --</option>
+                        {availableCoaches.map((c) => (
+                          <option key={c.userId} value={c.userId}>
+                            {c.fullName} ({c.phone || c.email})
+                          </option>
+                        ))}
+                        <option value="999">Coach Hoàng Minh (Tennis / Pickleball Master)</option>
+                        <option value="998">Coach Trần Đức (Fitness &amp; Bơi lội)</option>
+                      </select>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-white cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={confirmReassignNotice}
+                  onChange={(e) => setConfirmReassignNotice(e.target.checked)}
+                  className="mt-0.5 w-4 h-4 rounded text-orange-500 cursor-pointer"
+                />
+                <span className="text-xs text-slate-700 font-semibold leading-relaxed">
+                  Tôi xác nhận đã điều phối Coach thay thế cho tất cả các booking bị ảnh hưởng và hệ thống đã gửi thông báo tự động cho khách hàng theo đúng quy định.
+                </span>
+              </label>
+            </div>
+
+            <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setApproveLeaveModal(null)}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Hủy bỏ
+              </button>
+              <button
+                type="button"
+                disabled={!confirmReassignNotice}
+                onClick={handleConfirmApproveLeave}
+                className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all cursor-pointer"
+              >
+                Xác nhận duyệt nghỉ &amp; Phân ca
+              </button>
+            </div>
           </div>
         </div>
       )}
-
-      {/* MGR-24 Coach Leave Approval & Reassignment Modal */}
-      {approveLeaveModal && (() => {
-        const affectedSessions = Array.isArray(approveLeaveModal.affectedSessions)
-          ? approveLeaveModal.affectedSessions
-          : [];
-        const allSessionsAssigned = affectedSessions.every((s) => Boolean(reassignForm[s.sessionId]));
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 !m-0">
-            <div className="relative w-full max-w-xl overflow-hidden bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-4 max-h-[90vh] flex flex-col">
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div>
-                  <h3 className="text-base font-bold text-slate-900">
-                    Xác nhận duyệt nghỉ &amp; Phân công Coach thay thế
-                  </h3>
-                  <p className="text-xs text-slate-500">Coach: {approveLeaveModal.coachName} · {approveLeaveModal.startDate} → {approveLeaveModal.endDate}</p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setApproveLeaveModal(null)}
-                  className="text-slate-400 hover:text-slate-700 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[20px]">close</span>
-                </button>
-              </div>
-
-              <div className="space-y-4 flex-1 overflow-y-auto pr-1">
-                <div className="p-3.5 bg-orange-50/80 border border-orange-200 rounded-xl text-xs text-orange-900 space-y-1">
-                  <strong>Quy định:</strong>
-                  <p className="text-[11px] leading-relaxed">
-                    Có {affectedSessions.length} ca giảng dạy ({approveLeaveModal.affectedBookingsCount ?? 0} lượt đặt học viên) bị ảnh hưởng trong khoảng thời gian nghỉ này.
-                    {affectedSessions.length > 0
-                      ? ' Manager phải chọn Coach thay thế dạy đúng bộ môn cho từng ca. Hệ thống sẽ tự động gửi thông báo cho khách và KHÔNG thu thêm phụ phí.'
-                      : ' Không có ca giảng dạy đang mở nào bị ảnh hưởng, bạn có thể xác nhận duyệt nghỉ ngay.'}
-                  </p>
-                </div>
-
-                <div className="space-y-3">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Các ca giảng dạy cần chuyển lịch:</span>
-                  {affectedSessions.length === 0 ? (
-                    <div className="p-4 rounded-xl border border-slate-200 bg-slate-50 text-xs font-medium text-slate-600">
-                      Không có ca học nào đang hoạt động của HLV này trong khoảng thời gian xin nghỉ.
-                    </div>
-                  ) : (
-                    affectedSessions.map((session) => {
-                      const eligibleCoaches = availableCoaches.filter(
-                        (c) =>
-                          String(c.userId) !== String(approveLeaveModal.coachId) &&
-                          (!c.status || c.status.toUpperCase() === 'ACTIVE') &&
-                          coachTeachesSport(c, session.sportId, session.sportName),
-                      );
-                      const timeLabel = session.endTime
-                        ? `${formatDate(session.startTime)} - ${formatDate(session.endTime).slice(11)}`
-                        : formatDate(session.startTime);
-                      return (
-                        <div key={session.sessionId} className="p-3.5 rounded-xl border border-slate-200 bg-slate-50 space-y-2">
-                          <div className="flex justify-between items-start gap-2 text-xs">
-                            <div>
-                              <strong className="block text-slate-900 font-bold">{session.className || `Ca học #${session.sessionId}`}</strong>
-                              <span className="text-slate-500 text-[11px]">
-                                {timeLabel} · {session.bookedSlots ?? 0}/{session.maxSlots ?? 0} học viên
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {session.sportName && (
-                                <span className="px-2 py-0.5 rounded-md bg-orange-50 text-orange-700 border border-orange-200 text-[10px] font-bold">
-                                  {session.sportName}
-                                </span>
-                              )}
-                              <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">Cần Coach mới</span>
-                            </div>
-                          </div>
-
-                          <div className="flex items-center gap-2 pt-1">
-                            <span className="text-[11px] font-bold text-slate-600 whitespace-nowrap">Coach thay thế:</span>
-                            <select
-                              value={reassignForm[session.sessionId] || ''}
-                              onChange={(e) => setReassignForm({ ...reassignForm, [session.sessionId]: e.target.value })}
-                              className="w-full p-2 rounded-lg border border-slate-300 bg-white text-xs font-semibold text-slate-800 outline-none focus:border-orange-500 cursor-pointer"
-                            >
-                              <option value="">
-                                {eligibleCoaches.length === 0
-                                  ? `-- Không có HLV phù hợp môn ${session.sportName || 'này'} --`
-                                  : '-- Chọn Coach đảm nhiệm ca này --'}
-                              </option>
-                              {eligibleCoaches.map((c) => (
-                                <option key={c.userId} value={c.userId}>
-                                  {c.fullName} ({getCoachSportsLabel(c)})
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-
-                <label className="flex items-start gap-2.5 p-3 rounded-xl border border-slate-200 bg-white cursor-pointer select-none">
-                  <input
-                    type="checkbox"
-                    checked={confirmReassignNotice}
-                    onChange={(e) => setConfirmReassignNotice(e.target.checked)}
-                    className="mt-0.5 w-4 h-4 rounded text-orange-500 cursor-pointer"
-                  />
-                  <span className="text-xs text-slate-700 font-semibold leading-relaxed">
-                    Tôi xác nhận đã điều phối Coach thay thế cho tất cả các ca bị ảnh hưởng và hệ thống sẽ gửi thông báo tự động cho học viên theo đúng quy định.
-                  </span>
-                </label>
-              </div>
-
-              <div className="flex items-center justify-end gap-2 pt-3 border-t border-slate-100">
-                <button
-                  type="button"
-                  onClick={() => setApproveLeaveModal(null)}
-                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
-                >
-                  Hủy bỏ
-                </button>
-                <button
-                  type="button"
-                  disabled={!confirmReassignNotice || !allSessionsAssigned}
-                  onClick={handleConfirmApproveLeave}
-                  className="px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all cursor-pointer"
-                >
-                  Xác nhận duyệt nghỉ &amp; Phân ca
-                </button>
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </AdminLayout>
   );
 }

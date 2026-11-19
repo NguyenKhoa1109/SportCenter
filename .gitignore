@@ -1,10 +1,8 @@
 # Compiled class file
 *.class
 
-# Log & Temp files
+# Log file
 *.log
-*.tmp
-*.bak
 
 # Maven & Build Artifacts
 target/
@@ -22,7 +20,6 @@ node_modules/
 **/node_modules/
 dist/
 **/dist/
-frontend/dist/
 *.local
 
 # IDE & OS

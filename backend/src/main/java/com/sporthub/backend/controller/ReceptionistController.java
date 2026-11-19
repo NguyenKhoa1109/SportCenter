@@ -53,9 +53,6 @@ import java.util.TreeMap;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import com.sporthub.backend.entity.ClassSession;
-import com.sporthub.backend.entity.Sport;
-import com.sporthub.backend.repository.SportRepository;
-import com.sporthub.backend.util.CoachSportHelper;
 import com.sporthub.backend.dto.ReceptionistProfileResponse;
 import com.sporthub.backend.dto.ReceptionistProfileUpdateRequest;
 import com.sporthub.backend.dto.ReceptionistDashboardOverviewResponse;
@@ -90,8 +87,6 @@ public class ReceptionistController {
     private com.sporthub.backend.repository.ClassSessionRepository classSessionRepository;
     @Autowired(required = false)
     private com.sporthub.backend.repository.CourtBookingRepository courtBookingRepository;
-    @Autowired(required = false)
-    private SportRepository domainSportRepository;
 
     @Autowired
     public ReceptionistController(
@@ -404,13 +399,6 @@ public class ReceptionistController {
                 records);
     }
 
-    @GetMapping("/domain-sports")
-    @Transactional(readOnly = true)
-    public List<Sport> getDomainSports(Authentication authentication) {
-        requireStaff(authentication);
-        return domainSportRepository == null ? List.of() : domainSportRepository.findAllByOrderBySportIdAsc();
-    }
-
     @PostMapping("/users")
     @Transactional
     public ReceptionistMemberResponse createUser(
@@ -473,6 +461,7 @@ public class ReceptionistController {
 
         // Rule: TẤT CẢ user được tạo qua Admin Panel đều phải đổi password lần đầu
         boolean requirePasswordChange = true;
+
         User user = User.builder()
                 .fullName(fullName)
                 .email(email)
@@ -482,10 +471,6 @@ public class ReceptionistController {
                 .status("ACTIVE")
                 .requirePasswordChange(requirePasswordChange)
                 .build();
-        if ("COACH".equals(targetRole)) {
-            CoachSportHelper.syncCoachSports(
-                    user, request.sportIds(), request.specialty(), domainSportRepository, true);
-        }
 
         User savedUser = userRepository.save(user);
         

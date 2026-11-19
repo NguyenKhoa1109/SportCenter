@@ -10,70 +10,14 @@ export default function ReceptionistLayout({ children }) {
   const [isScanning, setIsScanning] = useState(false);
 
   const receptionistMenu = [
-    {
-      label: 'Tổng quan',
-      path: '/receptionist',
-      icon: 'dashboard',
-      section: 'Quầy lễ tân & POS',
-      mobilePin: true,
-      mobileLabel: 'Tổng quan',
-      subtitle: 'Bảng vận hành trung tâm, theo dõi check-in và doanh thu ca',
-    },
-    {
-      label: 'Check-in tại quầy',
-      path: '/receptionist/checkin',
-      icon: 'how_to_reg',
-      section: 'Quầy lễ tân & POS',
-      mobilePin: true,
-      mobileLabel: 'Check-in',
-      subtitle: 'Quét thẻ RFID, tìm kiếm hội viên, mở cổng tự động',
-    },
-    {
-      label: 'Bán hàng & Thu ngân POS',
-      path: '/receptionist/pos',
-      icon: 'point_of_sale',
-      section: 'Quầy lễ tân & POS',
-      mobilePin: true,
-      mobileLabel: 'Bán POS',
-      subtitle: 'Bán gói tập, nước uống, thiết bị thể thao',
-    },
-    {
-      label: 'Mượn & Thuê Dụng Cụ',
-      path: '/receptionist/equipment',
-      icon: 'sports_tennis',
-      section: 'Quầy lễ tân & POS',
-      subtitle: 'Quản lý mượn trả vợt, bóng và dụng cụ tại quầy',
-    },
-    {
-      label: 'Tra cứu & Quản lý Hội viên',
-      path: '/receptionist/members',
-      icon: 'badge',
-      section: 'Hội viên & Vận hành ca',
-      mobilePin: true,
-      mobileLabel: 'Hội viên',
-      subtitle: 'Tra cứu thông tin, thẻ số và gia hạn hội viên',
-    },
-    {
-      label: 'Thời khóa biểu các lớp',
-      path: '/receptionist/classes',
-      icon: 'calendar_month',
-      section: 'Hội viên & Vận hành ca',
-      subtitle: 'Theo dõi lịch lớp học và danh sách học viên',
-    },
-    {
-      label: 'Báo cáo ca trực & Doanh thu',
-      path: '/receptionist/shift',
-      icon: 'monitoring',
-      section: 'Hội viên & Vận hành ca',
-      subtitle: 'Tổng hợp thu chi tiền mặt, VNPay và bàn giao ca',
-    },
-    {
-      label: 'Hồ sơ cá nhân',
-      path: '/receptionist/profile',
-      icon: 'account_circle',
-      section: 'Hội viên & Vận hành ca',
-      subtitle: 'Mã QR nhân viên, thẻ định danh ca trực và bảo mật tài khoản',
-    },
+    { label: 'Tổng quan', path: '/receptionist', icon: 'dashboard' },
+    { label: 'Check-in tại quầy', path: '/receptionist/checkin', icon: 'how_to_reg' },
+    { label: 'Bán hàng & Thu ngân POS', path: '/receptionist/pos', icon: 'point_of_sale' },
+    { label: 'Mượn & Thuê Dụng Cụ', path: '/receptionist/equipment', icon: 'sports_tennis' },
+    { label: 'Tra cứu & Quản lý Hội viên', path: '/receptionist/members', icon: 'badge' },
+    { label: 'Thời khóa biểu các lớp', path: '/receptionist/classes', icon: 'calendar_month' },
+    { label: 'Báo cáo ca trực & Doanh thu', path: '/receptionist/shift', icon: 'monitoring' },
+    { label: 'Hồ sơ cá nhân', path: '/receptionist/profile', icon: 'account_circle' },
   ];
 
   const handleSimulateScan = async (memberId, memberName) => {

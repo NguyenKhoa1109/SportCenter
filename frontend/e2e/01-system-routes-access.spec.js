@@ -128,7 +128,6 @@ test.describe('SUITE 1: Kiểm Thử Toàn Bộ 59 Routes & Phân Quyền 5 Vai 
     await expect(page).toHaveURL(/\/receptionist$/);
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
-    await page.locator('header').getByRole('button', { name: /Menu tài khoản/i }).click();
     const backToPortal = page.locator('header').getByRole('link', { name: /Về Portal/i });
     await expect(backToPortal).toBeVisible();
     await backToPortal.click();

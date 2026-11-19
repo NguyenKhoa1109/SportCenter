@@ -1,8 +1,7 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../../context/AppContext';
-import { createManagerUser, getManagerDomainSports } from '../../services/managerApi';
-import { createReceptionistUser, getReceptionistDomainSports } from '../../services/receptionistApi';
-import CoachSportSelector from './CoachSportSelector';
+import { createManagerUser } from '../../services/managerApi';
+import { createReceptionistUser } from '../../services/receptionistApi';
 
 export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
   const { currentUser, currentRole, showToast } = useApp();
@@ -20,28 +19,6 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
-  const [sports, setSports] = useState([]);
-  const [sportsLoading, setSportsLoading] = useState(false);
-  const [selectedSportIds, setSelectedSportIds] = useState([]);
-
-  const handleRoleChange = async (nextRole) => {
-    setRole(nextRole);
-    if (nextRole !== 'COACH') {
-      setSelectedSportIds([]);
-      return;
-    }
-    if (sports.length > 0 || sportsLoading) return;
-    setSportsLoading(true);
-    try {
-      const fetcher = currentRole === 'receptionist' ? getReceptionistDomainSports : getManagerDomainSports;
-      const rows = await fetcher();
-      setSports(Array.isArray(rows) ? rows : []);
-    } catch {
-      setSports([]);
-    } finally {
-      setSportsLoading(false);
-    }
-  };
 
   // Optional fields per specification (Section 2.1 - B. Thông tin bổ sung)
   const [showOptionalFields, setShowOptionalFields] = useState(false);
@@ -52,28 +29,11 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
   const [emergencyContactName, setEmergencyContactName] = useState('');
   const [emergencyContactPhone, setEmergencyContactPhone] = useState('');
 
-  const resetForm = () => {
-    setRole('MEMBER');
-    setFullName('');
-    setPhone('');
-    setEmail('');
-    setPassword('SportHub@123');
-    setShowPassword(false);
-    setShowOptionalFields(false);
-    setDateOfBirth('');
-    setGender('');
-    setAddress('');
-    setRfidCode('');
-    setEmergencyContactName('');
-    setEmergencyContactPhone('');
-    setSelectedSportIds([]);
-    setError('');
-  };
-
-  const handleClose = () => {
-    resetForm();
-    onClose();
-  };
+  useEffect(() => {
+    if (isOpen) {
+      setError('');
+    }
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -91,11 +51,6 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
       return;
     }
 
-    if (role === 'COACH' && selectedSportIds.length === 0) {
-      setError('Vui lòng chọn ít nhất một bộ môn giảng dạy cho Huấn luyện viên.');
-      return;
-    }
-
     setSubmitting(true);
     try {
       const payload = {
@@ -104,7 +59,6 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
         email: email.trim(),
         password,
         role,
-        sportIds: role === 'COACH' ? selectedSportIds.map(Number) : null,
         dateOfBirth: dateOfBirth || null,
         gender: gender || null,
         address: address.trim() || null,
@@ -125,7 +79,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
         'success'
       );
       if (onSuccess) onSuccess();
-      handleClose();
+      onClose();
     } catch (err) {
       setError(err.message || 'Không thể tạo tài khoản người dùng.');
     } finally {
@@ -151,7 +105,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
           </div>
           <button
             type="button"
-            onClick={handleClose}
+            onClick={onClose}
             className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 transition-colors cursor-pointer"
           >
             <span className="material-symbols-outlined text-[20px]">close</span>
@@ -159,7 +113,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
         </div>
 
         {/* Form */}
-        <form onSubmit={handleSubmit} className="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
+        <form onSubmit={handleSubmit} className="p-6 space-y-4">
           {error && (
             <div role="alert" className="p-3 rounded-xl border border-red-200 bg-red-50 text-xs font-bold text-red-700">
               {error}
@@ -171,24 +125,21 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
             <label htmlFor="create-user-role" className="text-xs uppercase tracking-wider text-slate-700 font-extrabold flex items-center justify-between">
               <span>ĐĂNG KÝ VỚI VAI TRÒ *</span>
               <span className="text-[10px] text-slate-400 font-semibold normal-case">
-                {isManager ? 'Quyền Quản lý (5 vai trò)' : 'Quyền Lễ tân (3 vai trò)'}
+                {isManager ? 'Quyền Manager (4 vai trò)' : 'Quyền Lễ tân (3 vai trò)'}
               </span>
             </label>
             <div className="relative">
               <select
                 id="create-user-role"
                 value={role}
-                onChange={(e) => handleRoleChange(e.target.value)}
+                onChange={(e) => setRole(e.target.value)}
                 className="w-full bg-white text-slate-900 px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold outline-none focus:border-orange-500 focus:ring-1 focus:ring-orange-500 shadow-2xs appearance-none cursor-pointer"
               >
                 <option value="MEMBER">Khách hàng / Hội viên (MEMBER)</option>
                 <option value="COACH">Huấn luyện viên (COACH)</option>
                 <option value="RECEPTIONIST">Nhân viên lễ tân (RECEPTIONIST)</option>
                 {isManager && (
-                  <>
-                    <option value="MANAGER">Quản lý hệ thống (MANAGER)</option>
-                    <option value="ADMIN">Quản trị viên (ADMIN)</option>
-                  </>
+                  <option value="MANAGER">Quản lý hệ thống (MANAGER)</option>
                 )}
               </select>
               <span className="material-symbols-outlined absolute right-3.5 top-1/2 -translate-y-1/2 pointer-events-none text-slate-500 text-[18px]">
@@ -196,15 +147,6 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
               </span>
             </div>
           </div>
-
-          {role === 'COACH' && (
-            <CoachSportSelector
-              sports={sports}
-              selectedIds={selectedSportIds}
-              onChange={setSelectedSportIds}
-              loading={sportsLoading}
-            />
-          )}
 
           {/* Họ và tên */}
           <div className="flex flex-col gap-1">
@@ -395,7 +337,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess }) {
           <div className="flex items-center justify-end gap-2.5 pt-4 border-t border-slate-100">
             <button
               type="button"
-              onClick={handleClose}
+              onClick={onClose}
               disabled={submitting}
               className="px-4 py-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
             >

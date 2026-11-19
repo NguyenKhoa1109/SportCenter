@@ -201,10 +201,6 @@ public class RefundRequestController {
         Long managerId = getUserId(auth);
         if (!decision.approved()) {
             refund.setStatus("REJECTED"); refund.setDecisionNote(decision.decisionNote()); refund.setApprovedBy(managerId);
-            if (bookingService != null && refund.getBookingId() != null && refund.getBookingType() != null
-                    && !"MEMBERSHIP".equalsIgnoreCase(refund.getBookingType())) {
-                bookingService.restoreBookingAfterRefundRejection(refund.getBookingId(), refund.getBookingType());
-            }
         } else {
             PaymentTransaction tx = paymentTransactionRepository.findByIdForUpdate(refund.getTransactionId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Thiếu giao dịch gốc, cần đối soát."));
@@ -217,12 +213,7 @@ public class RefundRequestController {
                 try { result = vnpayGateway.refundPayment(tx, refund.getRefundAmount(), refund.getReason()); }
                 catch (Exception e) { result = Map.of("vnp_ResponseCode", "99"); }
                 if (result == null || !"00".equals(result.get("vnp_ResponseCode"))) {
-                    String gatewayMsg = result != null ? java.util.Objects.toString(result.get("vnp_Message"), "") : "";
-                    String note = "Hoàn tiền chưa thành công; cần đối soát cổng thanh toán trước khi thử lại.";
-                    if (!gatewayMsg.isBlank()) {
-                        note += " (" + gatewayMsg + ")";
-                    }
-                    refund.setDecisionNote(note);
+                    refund.setDecisionNote("Hoàn tiền chưa thành công; cần đối soát cổng thanh toán trước khi thử lại.");
                     return ResponseEntity.ok(toDTO(refundRepository.save(refund)));
                 }
             }
@@ -239,24 +230,13 @@ public class RefundRequestController {
             }
             refund.setStatus("APPROVED"); refund.setApprovedBy(managerId); refund.setDecisionNote(decision.decisionNote());
             if (refund.getBookingId() != null && refund.getBookingType() != null) {
-                if ("MEMBERSHIP".equalsIgnoreCase(refund.getBookingType()) && membershipService != null) {
-                    membershipService.cancelMembershipAfterRefund(refund.getBookingId(), id);
-                } else if (!"MEMBERSHIP".equalsIgnoreCase(refund.getBookingType()) && bookingService != null) {
-                    bookingService.cancelBookingAfterRefund(refund.getBookingId(), refund.getBookingType(), id);
-                }
+                if ("MEMBERSHIP".equals(refund.getBookingType())) membershipService.cancelMembershipAfterRefund(refund.getBookingId(), id);
+                else bookingService.cancelBookingAfterRefund(refund.getBookingId(), refund.getBookingType(), id);
             }
         }
         if (engagementService != null) {
             engagementService.audit(managerId, "MANAGER", "REFUND_DECIDED", "refundId=" + id + ", status=" + refund.getStatus());
-            String statusText = "APPROVED".equals(refund.getStatus()) ? "đã được phê duyệt" : "đã bị từ chối";
-            String noteSuffix = ("REJECTED".equals(refund.getStatus()) && refund.getDecisionNote() != null && !refund.getDecisionNote().isBlank())
-                    ? " Lý do: " + refund.getDecisionNote().trim()
-                    : "";
-            engagementService.notifyUser(
-                    refund.getMemberId(),
-                    "Kết quả yêu cầu hoàn tiền",
-                    "Yêu cầu hoàn tiền #" + id + " " + statusText + "." + noteSuffix,
-                    "REFUND");
+            engagementService.notifyUser(refund.getMemberId(), "Kết quả yêu cầu hoàn tiền", "Yêu cầu #" + id + ": " + refund.getStatus(), "REFUND");
         }
         return ResponseEntity.ok(toDTO(refundRepository.save(refund)));
     }

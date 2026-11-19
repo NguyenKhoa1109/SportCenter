@@ -11,7 +11,6 @@ const TYPE_ICON = {
   SCHEDULE: 'event',
   BOOKING: 'confirmation_number',
   ATTENDANCE: 'fact_check',
-  REFUND: 'currency_exchange',
 };
 
 /** Danh sách thông báo lưu trong DB, có trạng thái đã đọc. Dùng chung cho Member/Coach. */

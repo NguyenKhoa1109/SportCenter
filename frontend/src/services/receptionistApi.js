@@ -11,9 +11,6 @@ export const getReceptionistClasses = (weekStart) =>
 export const getReceptionistReport = (date) =>
   apiRequest(`/receptionist/report?date=${encodeURIComponent(date)}`);
 
-export const getReceptionistDomainSports = () =>
-  apiRequest('/receptionist/domain-sports');
-
 export const createReceptionistUser = (userData) =>
   apiRequest('/receptionist/users', {
     method: 'POST',

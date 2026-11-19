@@ -8,15 +8,5 @@ public record PendingStaffRegistrationResponse(
         String email,
         String phone,
         String role,
-        LocalDateTime createdAt,
-        String specialty) {
-    public PendingStaffRegistrationResponse(
-            Long userId,
-            String fullName,
-            String email,
-            String phone,
-            String role,
-            LocalDateTime createdAt) {
-        this(userId, fullName, email, phone, role, createdAt, null);
-    }
+        LocalDateTime createdAt) {
 }

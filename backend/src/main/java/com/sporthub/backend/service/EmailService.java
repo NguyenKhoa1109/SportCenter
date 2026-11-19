@@ -1,23 +1,11 @@
 package com.sporthub.backend.service;
 
-import jakarta.annotation.PreDestroy;
-import jakarta.mail.MessagingException;
-import jakarta.mail.Transport;
-import jakarta.mail.internet.MimeMessage;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
-import org.springframework.boot.context.event.ApplicationReadyEvent;
-import org.springframework.context.event.EventListener;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
-import org.springframework.mail.javamail.JavaMailSenderImpl;
-import org.springframework.mail.javamail.MimeMessageHelper;
-import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
-
-import java.nio.charset.StandardCharsets;
 
 @Service
 public class EmailService {
@@ -25,8 +13,6 @@ public class EmailService {
     private static final Logger logger = LoggerFactory.getLogger(EmailService.class);
 
     private final JavaMailSender mailSender;
-    private final Object transportLock = new Object();
-    private Transport cachedTransport;
 
     @Value("${spring.mail.username:}")
     private String fromEmail;
@@ -39,103 +25,8 @@ public class EmailService {
     }
 
     /**
-     * Pre-warm kết nối SMTP khi ứng dụng sẵn sàng để OTP đầu tiên gửi nhanh.
-     */
-    @Async
-    @EventListener(ApplicationReadyEvent.class)
-    public void warmUpSmtpTransport() {
-        if (!(mailSender instanceof JavaMailSenderImpl impl) || !hasSmtpCredentials(impl)) {
-            return;
-        }
-        synchronized (transportLock) {
-            try {
-                ensureConnectedTransport(impl);
-                logger.info("[EMAIL-SERVICE] Pre-warmed SMTP transport to {}:{}", impl.getHost(), impl.getPort());
-            } catch (Exception e) {
-                logger.warn("[EMAIL-SERVICE] SMTP transport pre-warm failed (will retry on send): {}", e.getMessage());
-                closeTransportQuietly();
-            }
-        }
-    }
-
-    private boolean hasSmtpCredentials(JavaMailSenderImpl impl) {
-        return StringUtils.hasText(impl.getHost())
-                && StringUtils.hasText(impl.getUsername())
-                && StringUtils.hasText(impl.getPassword());
-    }
-
-    private Transport ensureConnectedTransport(JavaMailSenderImpl impl) throws MessagingException {
-        if (cachedTransport == null || !cachedTransport.isConnected()) {
-            closeTransportQuietly();
-            String protocol = impl.getProtocol() != null ? impl.getProtocol() : "smtp";
-            Transport transport = impl.getSession().getTransport(protocol);
-            transport.connect(impl.getHost(), impl.getPort(), impl.getUsername(), impl.getPassword());
-            cachedTransport = transport;
-        }
-        return cachedTransport;
-    }
-
-    /**
-     * Gửi email qua SMTP Transport tái sử dụng nếu là JavaMailSenderImpl và đủ thông tin đăng nhập; fallback về mailSender.send().
-     */
-    private void sendMessage(SimpleMailMessage message) {
-        if (!(mailSender instanceof JavaMailSenderImpl impl) || !hasSmtpCredentials(impl)) {
-            mailSender.send(message);
-            return;
-        }
-
-        synchronized (transportLock) {
-            try {
-                Transport transport = ensureConnectedTransport(impl);
-
-                MimeMessage mimeMessage = impl.createMimeMessage();
-                MimeMessageHelper helper = new MimeMessageHelper(mimeMessage, StandardCharsets.UTF_8.name());
-                if (message.getFrom() != null) {
-                    helper.setFrom(message.getFrom());
-                }
-                if (message.getTo() != null) {
-                    helper.setTo(message.getTo());
-                }
-                if (message.getSubject() != null) {
-                    helper.setSubject(message.getSubject());
-                }
-                if (message.getText() != null) {
-                    helper.setText(message.getText(), false);
-                }
-                mimeMessage.saveChanges();
-
-                transport.sendMessage(mimeMessage, mimeMessage.getAllRecipients());
-            } catch (MessagingException e) {
-                logger.warn("[EMAIL-SERVICE] Reused SMTP transport failed, falling back to standard send: {}", e.getMessage());
-                closeTransportQuietly();
-                mailSender.send(message);
-            }
-        }
-    }
-
-    private void closeTransportQuietly() {
-        if (cachedTransport != null) {
-            try {
-                cachedTransport.close();
-            } catch (MessagingException ignored) {
-                // Ignore close error on stale transport
-            } finally {
-                cachedTransport = null;
-            }
-        }
-    }
-
-    @PreDestroy
-    public void destroy() {
-        synchronized (transportLock) {
-            closeTransportQuietly();
-        }
-    }
-
-    /**
      * Gửi OTP cho Member Registration
      */
-    @Async
     public void sendRegistrationOtpEmail(String toEmail, String fullName, String otp) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
@@ -154,7 +45,7 @@ public class EmailService {
                 fullName, otp
             ));
 
-            sendMessage(message);
+            mailSender.send(message);
             
             logger.info("==========================================================================");
             logger.info("[EMAIL-SERVICE] Registration OTP email sent successfully to: {}", toEmail);
@@ -177,7 +68,6 @@ public class EmailService {
     /**
      * Gửi OTP cho Forgot Password hoặc Email Verification
      */
-    @Async
     public void sendOtpEmail(String toEmail, String fullName, String otp, String purpose) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
@@ -209,7 +99,7 @@ public class EmailService {
                 ));
             }
 
-            sendMessage(message);
+            mailSender.send(message);
             
             logger.info("==========================================================================");
             logger.info("[EMAIL-SERVICE] Email OTP sent successfully to: {}", toEmail);
@@ -234,7 +124,6 @@ public class EmailService {
     /**
      * Gửi mật khẩu tạm thời cho Staff mới được tạo
      */
-    @Async
     public void sendTemporaryPasswordEmail(String toEmail, String fullName, String temporaryPassword, String role) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
@@ -256,7 +145,7 @@ public class EmailService {
                 fullName, toEmail, temporaryPassword, role
             ));
 
-            sendMessage(message);
+            mailSender.send(message);
             
             logger.info("==========================================================================");
             logger.info("[EMAIL-SERVICE] Temporary password email sent successfully to: {}", toEmail);
@@ -281,7 +170,6 @@ public class EmailService {
     /**
      * Gửi email thông báo đặt lại mật khẩu thành công
      */
-    @Async
     public void sendPasswordResetSuccessEmail(String toEmail, String fullName) {
         try {
             SimpleMailMessage message = new SimpleMailMessage();
@@ -297,7 +185,7 @@ public class EmailService {
                 fullName
             ));
 
-            sendMessage(message);
+            mailSender.send(message);
             logger.info("[EMAIL-SERVICE] Password reset success email sent to: {}", toEmail);
             
         } catch (Exception e) {

@@ -2,47 +2,9 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { useApp } from '../../context/AppContext';
 import { getMemberNotifications } from '../../services/memberApi';
-import { getNotifications, markAllNotificationsRead, markNotificationRead } from '../../services/engagementApi';
+import { getNotifications, markNotificationRead } from '../../services/engagementApi';
 import { getAvatarImageUrl, getAvatarInitials } from '../../utils/avatarHelper';
-import { getPortalHomePath, getRoleProfileLink } from '../../utils/portalRoute';
-
-const ROLE_LABELS = {
-  member: 'Hội viên',
-  coach: 'HLV',
-  receptionist: 'Lễ tân',
-  admin: 'Quản trị',
-};
-
-const EXTRA_ROLE_PAGES = {
-  member: [
-    {
-      title: 'Đặt lịch & Chọn dịch vụ',
-      subtitle: 'Chọn thuê sân, lớp học hoặc HLV riêng PT 1-1',
-      path: '/member/book',
-      icon: 'add_circle',
-    },
-  ],
-  coach: [
-    {
-      title: 'Thu nhập & Thù lao ca dạy',
-      subtitle: 'Theo dõi thu nhập buổi dạy và hoa hồng HLV',
-      path: '/coach/income',
-      icon: 'payments',
-    },
-  ],
-};
-
-const NOTIFICATION_INBOX_ROUTES = {
-  member: '/member/notifications',
-  coach: '/coach/notifications',
-};
-
-const SECONDARY_DROPDOWN_LINKS = {
-  member: { label: 'Gói tập & Quyền lợi', path: '/member/packages', icon: 'card_membership' },
-  coach: { label: 'Về trang công khai', path: '/', icon: 'public' },
-  receptionist: { label: 'Về trang công khai', path: '/', icon: 'public' },
-  admin: { label: 'Về trang công khai', path: '/', icon: 'public' },
-};
+import { getPortalHomePath } from '../../utils/portalRoute';
 
 const parseNotifications = (data) => {
   const rawList = Array.isArray(data)
@@ -67,9 +29,6 @@ const parseNotifications = (data) => {
   }));
 };
 
-const isMenuItemActive = (pathname, itemPath, role) =>
-  pathname === itemPath || (itemPath !== `/${role}` && pathname.startsWith(`${itemPath}/`));
-
 export default function PortalLayout({
   role = 'member', // 'member' | 'receptionist' | 'coach' | 'admin'
   menuItems = [],
@@ -81,19 +40,17 @@ export default function PortalLayout({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [showNotifications, setShowNotifications] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [liveNotifications, setLiveNotifications] = useState([]);
-  const [showUserMenu, setShowUserMenu] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
   const { currentRole, logout } = useApp();
   const portalHomePath = getPortalHomePath(role, getPortalHomePath(currentRole, '/'));
 
   const searchInputRef = useRef(null);
-  const notificationsRef = useRef(null);
-  const userMenuRef = useRef(null);
 
-  // Global Keyboard Shortcut: Cmd+K / Ctrl+K & Escape
+  // Global Keyboard Shortcut: Cmd+K / Ctrl+K
   useEffect(() => {
     const handleKeyDown = (e) => {
       if ((e.metaKey || e.ctrlKey) && e.key === 'k') {
@@ -102,25 +59,12 @@ export default function PortalLayout({
       }
       if (e.key === 'Escape') {
         setSearchOpen(false);
-        setShowNotifications(false);
-        setShowUserMenu(false);
-        setMobileMenuOpen(false);
-      }
-    };
-    const handleClickOutside = (event) => {
-      if (notificationsRef.current && !notificationsRef.current.contains(event.target)) {
-        setShowNotifications(false);
-      }
-      if (userMenuRef.current && !userMenuRef.current.contains(event.target)) {
-        setShowUserMenu(false);
+        setNotificationsOpen(false);
+        setProfileOpen(false);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => {
-      window.removeEventListener('keydown', handleKeyDown);
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
+    return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
   useEffect(() => {
@@ -155,49 +99,44 @@ export default function PortalLayout({
     fetchLiveNotifications();
   }, [fetchLiveNotifications]);
 
-  const roleName = ROLE_LABELS[role] || 'Hệ thống';
-  const existingPaths = new Set(menuItems.map((item) => item.path));
-  const searchablePages = [
-    ...menuItems.map((item) => ({
-      title: item.label,
-      subtitle: item.subtitle || item.section || 'Trang chức năng hệ thống',
-      path: item.path,
-      icon: item.icon,
-      roleName,
-    })),
-    ...(EXTRA_ROLE_PAGES[role] || [])
-      .filter((item) => !existingPaths.has(item.path))
-      .map((item) => ({ ...item, roleName })),
+  // System pages directory for quick jump
+  const systemPages = [
+    { title: 'Tổng quan', subtitle: 'Bảng điều khiển cá nhân, lịch tập hôm nay', path: '/member', icon: 'dashboard', roleName: 'Hội viên' },
+    { title: 'Gói tập & Quyền lợi', subtitle: 'Xem gói tập, gia hạn và nâng cấp thẻ', path: '/member/packages', icon: 'card_membership', roleName: 'Hội viên' },
+    { title: 'Đăng ký lớp học', subtitle: 'Đăng ký và hủy lịch lớp học thể thao theo kỳ', path: '/member/classes', icon: 'school', roleName: 'Hội viên' },
+    { title: 'Đặt sân chơi', subtitle: 'Chọn môn thể thao, sân, khung giờ và thanh toán', path: '/member/book/court/sports', icon: 'sports_tennis', roleName: 'Hội viên' },
+    { title: 'Thời khóa biểu của tôi', subtitle: 'Lịch sân và lịch lớp đã thanh toán', path: '/member/schedule', icon: 'calendar_month', roleName: 'Hội viên' },
+    { title: 'Lịch sử điểm danh', subtitle: 'Chuyên cần buổi học và lượt quét cổng RFID', path: '/member/attendance', icon: 'fact_check', roleName: 'Hội viên' },
+    { title: 'Kế hoạch & Nhận xét HLV', subtitle: 'Chỉ số InBody, mục tiêu và phản hồi HLV', path: '/member/workout-plans', icon: 'monitor_weight', roleName: 'Hội viên' },
+    { title: 'Tiến độ & Trợ lý AI', subtitle: 'Gợi ý bài tập AI, phân tích InBody', path: '/member/ai-assistant', icon: 'smart_toy', roleName: 'Hội viên' },
+    { title: 'Thông báo & Nhắc nhở', subtitle: 'Lịch học sắp tới, hạn gói thẻ, nhận xét', path: '/member/notifications', icon: 'notifications', roleName: 'Hội viên' },
+    { title: 'Lịch sử giao dịch', subtitle: 'Biên lai điện tử, hoàn tiền và chi tiêu', path: '/member/transactions', icon: 'account_balance_wallet', roleName: 'Hội viên' },
+    { title: 'Hồ sơ & Thẻ số cá nhân', subtitle: 'Mã QR check-in, thông tin cá nhân', path: '/member/profile', icon: 'badge', roleName: 'Hội viên' },
+    { title: 'Hồ sơ & Thẻ HLV', subtitle: 'Thông tin cá nhân, thẻ số HLV, chuyên môn và bằng cấp', path: '/coach/profile', icon: 'badge', roleName: 'HLV' },
+    { title: 'Tổng quan Lễ tân', subtitle: 'Bảng vận hành trung tâm, theo dõi check-in và doanh thu ca', path: '/receptionist', icon: 'dashboard', roleName: 'Lễ tân' },
+    { title: 'Check-in Lễ tân tại quầy', subtitle: 'Quét thẻ RFID, tìm kiếm hội viên, mở cổng tự động', path: '/receptionist/checkin', icon: 'how_to_reg', roleName: 'Lễ tân' },
+    { title: 'Hồ sơ nhân viên Lễ tân', subtitle: 'Mã QR nhân viên, thẻ định danh ca trực và bảo mật tài khoản', path: '/receptionist/profile', icon: 'account_circle', roleName: 'Lễ tân' },
+    { title: 'Bán hàng POS & Thu ngân', subtitle: 'Bán gói tập, nước uống, thiết bị thể thao', path: '/receptionist/pos', icon: 'point_of_sale', roleName: 'Lễ tân' },
+    { title: 'Tổng quan', subtitle: 'Bảng điều khiển HLV, ca dạy hôm nay và hiệu suất', path: '/coach', icon: 'dashboard', roleName: 'HLV' },
+    { title: 'Lịch dạy HLV trong tuần', subtitle: 'Lịch ca dạy, phòng tập, số lượng học viên', path: '/coach/schedule', icon: 'calendar_month', roleName: 'HLV' },
+    { title: 'Học viên của tôi', subtitle: 'Hồ sơ học viên, mục tiêu thể chất PAR-Q', path: '/coach/students', icon: 'groups', roleName: 'HLV' },
+    { title: 'Điểm danh & Đánh giá buổi tập', subtitle: 'Ghi nhận chuyên cần, gửi bài tập về nhà', path: '/coach/attendance', icon: 'fact_check', roleName: 'HLV' },
+    { title: 'Tổng quan Quản lý Trung tâm', subtitle: 'Doanh thu, tỉ lệ lấp đầy sân, báo cáo vận hành', path: '/admin', icon: 'grid_view', roleName: 'Admin' },
+    { title: 'Quản lý Gói tập & Dịch vụ', subtitle: 'Cấu hình giá thẻ, thời hạn, quyền lợi', path: '/admin/packages', icon: 'card_membership', roleName: 'Admin' },
+    { title: 'Quản lý Lịch & Sân bãi', subtitle: 'Lịch đặt cụm sân Pickleball, Tennis, Bể bơi', path: '/admin/facilities', icon: 'stadium', roleName: 'Admin' },
+    { title: 'Quản lý Nhân sự & Khách', subtitle: 'Danh sách HLV, lễ tân, tài khoản người dùng', path: '/admin/staff', icon: 'group', roleName: 'Admin' },
+    { title: 'Duyệt đăng ký nhân viên', subtitle: 'Duyệt hoặc từ chối đăng ký Coach và Lễ tân', path: '/admin/staff-approvals', icon: 'how_to_reg', roleName: 'Admin' },
+    { title: 'Bảng giá hội viên công khai', subtitle: 'Trang bảng giá gói Diamond, Gold, Silver', path: '/pricing', icon: 'receipt_long', roleName: 'Public' },
   ];
 
   // Search Results Filtering
   const cleanQuery = searchQuery.trim().toLowerCase();
-  const matchedPages = searchablePages.filter(
+  const matchedPages = systemPages.filter(
     (p) =>
       p.title.toLowerCase().includes(cleanQuery) ||
       p.subtitle.toLowerCase().includes(cleanQuery) ||
-      p.path.toLowerCase().includes(cleanQuery) ||
       p.roleName.toLowerCase().includes(cleanQuery)
   );
-
-  const hasSections = menuItems.some((item) => Boolean(item.section));
-  const pinnedMobileItems = menuItems.filter((item) => item.mobilePin);
-  const mobileBottomItems = (pinnedMobileItems.length > 0 ? pinnedMobileItems : menuItems).slice(0, 4);
-  const inboxRoute = NOTIFICATION_INBOX_ROUTES[role] || null;
-  const primaryProfileLink = getRoleProfileLink(role, portalHomePath);
-  const secondaryDropdownLink = SECONDARY_DROPDOWN_LINKS[role] || {
-    label: 'Về trang công khai',
-    path: '/',
-    icon: 'public',
-  };
-
-  const handleMarkAllNotificationsRead = async () => {
-    if (liveNotifications.some((n) => !n.isRead)) {
-      await markAllNotificationsRead().catch(() => {});
-      setLiveNotifications((prev) => prev.map((n) => ({ ...n, isRead: true })));
-    }
-    setShowNotifications(false);
-  };
 
   return (
     <div className="min-h-screen bg-[#f7f9fb] font-body-md text-slate-800 antialiased flex flex-col pb-16 lg:pb-0">
@@ -222,7 +161,7 @@ export default function PortalLayout({
                   <path d="M7 4H19L17.5 8H11.5L10.5 11H16.5L15 15H10L8.5 20H4.5L7 4Z" fill="currentColor" />
                 </svg>
               </div>
-              <div className="flex flex-col min-w-0">
+              <div className="flex flex-col min-h-0 flex-1 overflow-y-auto pb-3">
                 <span className="font-headline-sm text-[15px] text-slate-900 tracking-tight font-black leading-tight">
                   F SPORT <span className="text-orange-500">CENTER</span>
                 </span>
@@ -248,48 +187,36 @@ export default function PortalLayout({
 
           {/* Navigation Links */}
           <div className="px-3 mt-1">
-            {!hasSections && (
-              <span className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
-                Menu Chức Năng
-              </span>
-            )}
+            <span className="px-3 text-[11px] font-bold text-slate-400 uppercase tracking-wider block mb-1.5">
+              Menu Chức Năng
+            </span>
 
             <nav className="flex flex-col gap-1">
-              {menuItems.map((item, idx) => {
-                const isActive = isMenuItemActive(location.pathname, item.path, role);
-                const showSectionHeader =
-                  Boolean(item.section) && (idx === 0 || item.section !== menuItems[idx - 1]?.section);
+              {menuItems.map((item) => {
+                const isActive =
+                  location.pathname === item.path ||
+                  (item.path !== `/${role}` && location.pathname.startsWith(`${item.path}/`));
 
                 return (
-                  <React.Fragment key={item.path}>
-                    {showSectionHeader && (
-                      <div
-                        className={`px-3 text-[10px] font-bold text-slate-400 uppercase tracking-wider ${
-                          idx === 0 ? 'pt-1 pb-1' : 'pt-3 pb-1'
-                        }`}
-                      >
-                        {item.section}
-                      </div>
-                    )}
-                    <Link
-                      to={item.path}
-                      onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] transition-all ${
-                        isActive
-                          ? 'bg-orange-500 text-white font-headline-sm font-bold shadow-sm shadow-orange-500/20'
-                          : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                  <Link
+                    key={item.path}
+                    to={item.path}
+                    onClick={() => setMobileMenuOpen(false)}
+                    className={`flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-[13px] transition-all ${
+                      isActive
+                        ? 'bg-orange-500 text-white font-headline-sm font-bold shadow-sm shadow-orange-500/20'
+                        : 'text-slate-600 hover:bg-slate-100 hover:text-slate-900 font-medium'
+                    }`}
+                  >
+                    <span
+                      className={`material-symbols-outlined text-[20px] ${
+                        isActive ? 'text-white font-bold' : 'text-slate-500'
                       }`}
                     >
-                      <span
-                        className={`material-symbols-outlined text-[20px] ${
-                          isActive ? 'text-white font-bold' : 'text-slate-500'
-                        }`}
-                      >
-                        {item.icon}
-                      </span>
-                      <span className="truncate">{item.label}</span>
-                    </Link>
-                  </React.Fragment>
+                      {item.icon}
+                    </span>
+                    <span className="truncate">{item.label}</span>
+                  </Link>
                 );
               })}
             </nav>
@@ -384,9 +311,7 @@ export default function PortalLayout({
               <button
                 onClick={quickAction.onClick}
                 type="button"
-                title={quickAction.label}
-                aria-label={quickAction.label}
-                className="h-9 px-2.5 sm:px-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs uppercase tracking-wider font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-orange-500/20 cursor-pointer shrink-0"
+                className="h-9 px-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs uppercase tracking-wider font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-orange-500/20 cursor-pointer"
               >
                 <span className="material-symbols-outlined text-[18px]">{quickAction.icon}</span>
                 <span className="hidden sm:inline">{quickAction.label}</span>
@@ -394,12 +319,12 @@ export default function PortalLayout({
             )}
 
             {/* Notification Trigger & Flyout */}
-            <div ref={notificationsRef} className="relative">
+            <div className="relative">
               <button
                 onClick={() => {
-                  const nextOpen = !showNotifications;
-                  setShowNotifications(nextOpen);
-                  setShowUserMenu(false);
+                  const nextOpen = !notificationsOpen;
+                  setNotificationsOpen(nextOpen);
+                  setProfileOpen(false);
                   if (nextOpen) {
                     fetchLiveNotifications();
                   }
@@ -407,8 +332,6 @@ export default function PortalLayout({
                 type="button"
                 className="w-9 h-9 rounded-xl bg-slate-100 border border-slate-200 flex items-center justify-center text-slate-600 hover:text-slate-900 hover:bg-slate-200 transition-colors relative cursor-pointer"
                 title="Thông báo"
-                aria-label="Thông báo"
-                aria-expanded={showNotifications}
               >
                 <span className="material-symbols-outlined text-[18px]">notifications</span>
                 {liveNotifications.some((n) => !n.isRead) && (
@@ -417,30 +340,20 @@ export default function PortalLayout({
               </button>
 
               {/* Notification Flyout Menu */}
-              {showNotifications && (
+              {notificationsOpen && (
                 <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 p-4 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="pb-3 border-b border-slate-100 flex items-center justify-between">
                     <h3 className="font-headline-sm text-sm font-bold text-slate-900">Thông báo</h3>
-                    {inboxRoute ? (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setShowNotifications(false);
-                          navigate(inboxRoute);
-                        }}
-                        className="text-[11px] font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
-                      >
-                        Xem tất cả
-                      </button>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={handleMarkAllNotificationsRead}
-                        className="text-[11px] font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
-                      >
-                        Đánh dấu đã đọc
-                      </button>
-                    )}
+                    <button
+                      onClick={() => {
+                        setNotificationsOpen(false);
+                        const targetNotifRoute = role === 'coach' ? '/coach/notifications' : role === 'admin' ? '/admin/broadcast' : role === 'receptionist' ? '/receptionist' : '/member/notifications';
+                        navigate(targetNotifRoute);
+                      }}
+                      className="text-[11px] font-bold text-orange-600 hover:text-orange-700 cursor-pointer"
+                    >
+                      Xem tất cả
+                    </button>
                   </div>
                   {liveNotifications.length === 0 ? (
                     <div className="py-8 text-center text-xs text-slate-500">
@@ -452,7 +365,7 @@ export default function PortalLayout({
                         <div
                           key={item.id}
                           onClick={async () => {
-                            setShowNotifications(false);
+                            setNotificationsOpen(false);
                             if (!item.isRead && item.notificationId) {
                               await markNotificationRead(item.notificationId).catch(() => {});
                               setLiveNotifications((prev) =>
@@ -461,8 +374,9 @@ export default function PortalLayout({
                             }
                             if (item.link) {
                               navigate(item.link);
-                            } else if (inboxRoute) {
-                              navigate(inboxRoute);
+                            } else {
+                              const targetNotifRoute = role === 'coach' ? '/coach/notifications' : role === 'admin' ? '/admin/broadcast' : role === 'receptionist' ? '/receptionist' : '/member/notifications';
+                              navigate(targetNotifRoute);
                             }
                           }}
                           className="py-2.5 px-2 hover:bg-slate-50 rounded-xl cursor-pointer transition-colors"
@@ -494,17 +408,13 @@ export default function PortalLayout({
             </div>
 
             {/* Profile Avatar Trigger & Dropdown */}
-            <div ref={userMenuRef} className="relative">
+            <div className="relative">
               <button
                 onClick={() => {
-                  setShowUserMenu((prev) => !prev);
-                  setShowNotifications(false);
+                  setProfileOpen(!profileOpen);
+                  setNotificationsOpen(false);
                 }}
                 type="button"
-                title="Menu tài khoản"
-                aria-label="Menu tài khoản"
-                aria-expanded={showUserMenu}
-                aria-haspopup="menu"
                 className="w-9 h-9 rounded-xl bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center font-bold text-xs shadow-sm hover:bg-orange-100 hover:ring-2 hover:ring-orange-500 transition-all cursor-pointer overflow-hidden p-0"
               >
                 {getAvatarImageUrl(currentUser?.avatar) ? (
@@ -514,11 +424,8 @@ export default function PortalLayout({
                 )}
               </button>
 
-              {showUserMenu && (
-                <div
-                  role="menu"
-                  className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-2rem)] bg-white rounded-2xl shadow-2xl border border-slate-200 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200"
-                >
+              {profileOpen && (
+                <div className="absolute right-0 mt-2 w-64 bg-white rounded-2xl shadow-2xl border border-slate-200 p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-200">
                   <div className="p-2 border-b border-slate-100">
                     <div className="font-bold text-sm text-slate-900 truncate">
                       {currentUser?.name}
@@ -532,41 +439,51 @@ export default function PortalLayout({
 
                   <div className="py-2 flex flex-col gap-1">
                     <button
-                      type="button"
-                      role="menuitem"
                       onClick={() => {
-                        navigate(primaryProfileLink.path);
-                        setShowUserMenu(false);
+                        const targetProfile =
+                          role === 'coach'
+                            ? '/coach/profile'
+                            : role === 'receptionist'
+                            ? '/receptionist/profile'
+                            : role === 'admin'
+                            ? '/admin/settings'
+                            : '/member/profile';
+                        navigate(targetProfile);
+                        setProfileOpen(false);
                       }}
                       className="flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-xl hover:bg-slate-100 text-slate-700 font-medium transition-colors text-left cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[18px] text-slate-500">
-                        {primaryProfileLink.icon}
+                        account_circle
                       </span>
-                      <span>{primaryProfileLink.label}</span>
+                      <span>
+                        {role === 'coach'
+                          ? 'Hồ sơ & Thẻ HLV'
+                          : role === 'receptionist'
+                          ? 'Hồ sơ cá nhân'
+                          : role === 'admin'
+                          ? 'Cài đặt tài khoản quản trị'
+                          : 'Hồ sơ & Thẻ số cá nhân'}
+                      </span>
                     </button>
                     <button
-                      type="button"
-                      role="menuitem"
                       onClick={() => {
-                        navigate(secondaryDropdownLink.path);
-                        setShowUserMenu(false);
+                        navigate('/pricing');
+                        setProfileOpen(false);
                       }}
                       className="flex items-center gap-2.5 px-2.5 py-2 text-xs rounded-xl hover:bg-slate-100 text-slate-700 font-medium transition-colors text-left cursor-pointer"
                     >
                       <span className="material-symbols-outlined text-[18px] text-slate-500">
-                        {secondaryDropdownLink.icon}
+                        card_membership
                       </span>
-                      <span>{secondaryDropdownLink.label}</span>
+                      <span>Bảng giá & Gói hội viên</span>
                     </button>
                   </div>
 
                   <div className="pt-2 border-t border-slate-100">
                     <button
-                      type="button"
-                      role="menuitem"
                       onClick={() => {
-                        setShowUserMenu(false);
+                        setProfileOpen(false);
                         logout();
                         navigate('/login');
                       }}
@@ -594,14 +511,16 @@ export default function PortalLayout({
           4. MOBILE BOTTOM NAVIGATION (Thanh điều hướng nhanh trên điện thoại)
          ========================================= */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-200 px-2 py-1.5 flex items-center justify-around shadow-lg">
-        {mobileBottomItems.map((item) => {
-          const isActive = isMenuItemActive(location.pathname, item.path, role);
+        {menuItems.slice(0, 4).map((item) => {
+          const isActive =
+            location.pathname === item.path ||
+            (item.path !== `/${role}` && location.pathname.startsWith(`${item.path}/`));
 
           return (
             <Link
               key={item.path}
               to={item.path}
-              className={`flex flex-col items-center justify-center py-1 px-1.5 rounded-xl transition-colors min-w-0 ${
+              className={`flex flex-col items-center justify-center py-1 px-2 rounded-xl transition-colors ${
                 isActive
                   ? 'text-slate-950 font-bold'
                   : 'text-slate-500 hover:text-slate-900'
@@ -614,8 +533,8 @@ export default function PortalLayout({
               >
                 <span className="material-symbols-outlined text-[20px]">{item.icon}</span>
               </div>
-              <span className="text-[10px] leading-tight mt-0.5 truncate max-w-[68px]">
-                {item.mobileLabel || item.label}
+              <span className="text-[10px] mt-0.5 truncate max-w-[64px]">
+                {item.label.split(' ')[0]}
               </span>
             </Link>
           );
@@ -625,12 +544,12 @@ export default function PortalLayout({
         <button
           onClick={() => setMobileMenuOpen(true)}
           type="button"
-          className="flex flex-col items-center justify-center py-1 px-1.5 rounded-xl text-slate-500 hover:text-slate-900"
+          className="flex flex-col items-center justify-center py-1 px-2 rounded-xl text-slate-500 hover:text-slate-900"
         >
           <div className="w-9 h-7 rounded-lg flex items-center justify-center">
             <span className="material-symbols-outlined text-[20px]">menu</span>
           </div>
-          <span className="text-[10px] leading-tight mt-0.5">Thêm</span>
+          <span className="text-[10px] mt-0.5">Thêm</span>
         </button>
       </nav>
 
@@ -676,39 +595,32 @@ export default function PortalLayout({
               {/* 1. Pages & Features */}
               <div>
                 <div className="px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-slate-400">
-                  Trang Chức Năng ({matchedPages.length})
+                  Trang Chức Năng Hệ Thống ({matchedPages.length})
                 </div>
                 <div className="flex flex-col gap-1 mt-1">
-                  {matchedPages.length === 0 ? (
-                    <div className="px-3 py-6 text-center text-xs text-slate-500">
-                      Không tìm thấy trang chức năng phù hợp.
-                    </div>
-                  ) : (
-                    matchedPages.map((page) => (
-                      <button
-                        key={page.path}
-                        type="button"
-                        onClick={() => {
-                          navigate(page.path);
-                          setSearchOpen(false);
-                        }}
-                        className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-100 text-left transition-colors cursor-pointer group"
-                      >
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-orange-500 text-slate-700 group-hover:text-white flex items-center justify-center transition-colors">
-                            <span className="material-symbols-outlined text-[18px]">{page.icon}</span>
-                          </div>
-                          <div>
-                            <div className="text-xs font-bold text-slate-900">{page.title}</div>
-                            <div className="text-[11px] text-slate-500">{page.subtitle}</div>
-                          </div>
+                  {matchedPages.slice(0, 6).map((page) => (
+                    <button
+                      key={page.path}
+                      onClick={() => {
+                        navigate(page.path);
+                        setSearchOpen(false);
+                      }}
+                      className="flex items-center justify-between p-2.5 rounded-xl hover:bg-slate-100 text-left transition-colors cursor-pointer group"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-lg bg-slate-100 group-hover:bg-orange-500 text-slate-700 group-hover:text-white flex items-center justify-center transition-colors">
+                          <span className="material-symbols-outlined text-[18px]">{page.icon}</span>
                         </div>
-                        <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
-                          {page.roleName}
-                        </span>
-                      </button>
-                    ))
-                  )}
+                        <div>
+                          <div className="text-xs font-bold text-slate-900">{page.title}</div>
+                          <div className="text-[11px] text-slate-500">{page.subtitle}</div>
+                        </div>
+                      </div>
+                      <span className="text-[10px] px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 font-medium">
+                        {page.roleName}
+                      </span>
+                    </button>
+                  ))}
                 </div>
               </div>
 
