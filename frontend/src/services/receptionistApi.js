@@ -38,8 +38,19 @@ export const updateReceptionMemberEmergencyContact = (memberId, data) =>
     body: JSON.stringify(data),
   });
 
-export const lookupReceptionCard = (code) =>
-  apiRequest(`/receptionist/lookup-card?code=${encodeURIComponent(code)}`);
+export const lookupReceptionCard = async (code) => {
+  const profile = await apiRequest(`/receptionist/lookup-card?code=${encodeURIComponent(code)}`);
+  const eligibilityUrl = `/receptionist/check-in-eligibility?memberId=${profile.userId}`;
+  const [checkInEligibility, todayBookings] = await Promise.all([
+    apiRequest(eligibilityUrl),
+    Promise.all((profile.todayBookings || []).map(async (booking) => (
+      booking.bookingType === 'COURT' && booking.status === 'CONFIRMED'
+        ? { ...booking, checkInEligibility: await apiRequest(`${eligibilityUrl}&bookingId=${booking.bookingId}`) }
+        : booking
+    ))),
+  ]);
+  return { ...profile, checkInEligibility, todayBookings };
+};
 
 export const sellReceptionMembership = (saleData) =>
   apiRequest('/receptionist/membership-sales', {

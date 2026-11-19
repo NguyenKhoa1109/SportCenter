@@ -474,10 +474,10 @@ export default function AdminStaffApprovalsPage() {
             <div className="flex items-center justify-between border-b border-slate-100 px-5 py-4">
               <div>
                 <h2 className="font-bold uppercase tracking-wider text-slate-900 text-sm">
-                  Đơn mua gói tập chờ duyệt kích hoạt (Section 5.2)
+                  Đơn đăng ký hạng hội viên chờ kích hoạt
                 </h2>
                 <p className="text-xs text-slate-500">
-                  Thanh toán thành công chuyển PENDING_APPROVAL. Khi Manager duyệt (APPROVE) hệ thống sẽ cấp phát Quota và nâng hạng thẻ VIP.
+                  Đơn đã thanh toán đang chờ duyệt. Khi kích hoạt, hội viên được cấp số buổi tập và giờ sân theo hạng đã đăng ký.
                 </p>
               </div>
               <span className="rounded-full bg-orange-100 px-3 py-1 text-xs font-extrabold text-orange-800">
@@ -503,7 +503,7 @@ export default function AdminStaffApprovalsPage() {
                       <th className="px-5 py-3">Gói thành viên</th>
                       <th className="px-5 py-3 whitespace-nowrap">Thanh toán</th>
                       <th className="px-5 py-3 whitespace-nowrap">Thời gian tạo</th>
-                      <th className="px-5 py-3">Quyền lợi quota cấp</th>
+                      <th className="px-5 py-3">Quyền lợi được cấp</th>
                       <th className="px-5 py-3 whitespace-nowrap">Trạng thái</th>
                       <th className="px-5 py-3 text-right whitespace-nowrap">Thao tác</th>
                     </tr>
@@ -519,7 +519,7 @@ export default function AdminStaffApprovalsPage() {
                           </td>
                           <td className="px-5 py-4">
                             <strong className="text-slate-900">{mem.packageName}</strong>
-                            <span className="block text-[11px] font-bold text-orange-600 uppercase">{mem.packageType}</span>
+                            <span className="block text-[11px] font-bold text-orange-600">{mem.accessType === 'OFF_PEAK' ? '08:00–16:00' : mem.accessType === 'PEAK' ? 'Giờ cao điểm' : 'Trong giờ hoạt động'}</span>
                           </td>
                           <td className="px-5 py-4 whitespace-nowrap">
                             <strong className="text-slate-900 text-sm whitespace-nowrap">{formatPrice(mem.price)}</strong>
@@ -529,11 +529,7 @@ export default function AdminStaffApprovalsPage() {
                             {formatDate(mem.createdAt)}
                           </td>
                           <td className="px-5 py-4 text-slate-700">
-                            {mem.packageType === 'VIP' ? (
-                              <span>{mem.quotaCourtHours}h Sân · {mem.quotaClassSessions} Buổi Lớp · {mem.quotaPtSessions} Buổi PT</span>
-                            ) : (
-                              <span>{mem.totalSessions || 10} Buổi trọn gói</span>
-                            )}
+                            <span>{mem.quotaClassSessions ?? 0} buổi lớp hoặc PT · {mem.quotaCourtHours ?? 0} giờ sân</span>
                           </td>
                           <td className="px-5 py-4 whitespace-nowrap">
                             <span

@@ -24,6 +24,13 @@ export default function AdminLayout({ children }) {
       subtitle: 'Lịch đặt cụm sân Pickleball, Tennis, Bể bơi',
     },
     {
+      label: 'Tạo lịch lớp học',
+      path: '/admin/classes/new',
+      icon: 'event_available',
+      section: 'Vận hành & Cơ sở',
+      subtitle: 'Tạo lịch lớp, chọn sân, huấn luyện viên và học phí',
+    },
+    {
       label: 'Bảo trì sân bãi',
       path: '/admin/maintenance',
       icon: 'build',
@@ -31,7 +38,7 @@ export default function AdminLayout({ children }) {
       subtitle: 'Quản lý lịch bảo trì sân bãi và thiết bị',
     },
     {
-      label: 'Gói tập & Dịch vụ',
+      label: 'Hạng hội viên & Quyền lợi',
       path: '/admin/packages',
       icon: 'card_membership',
       section: 'Vận hành & Cơ sở',

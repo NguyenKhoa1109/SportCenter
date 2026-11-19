@@ -133,7 +133,9 @@ export default function MemberTransactionsPage() {
       let list = Array.isArray(txRes) ? txRes : [];
       
       // If no quota transaction exists, inject realistic 0đ quota transaction for VIP demonstration (MEM-12)
-      const hasQuotaTx = list.some((t) => t.itemType === 'QUOTA' || t.amount === 0);
+      const hasQuotaTx = list.some(
+        (t) => t.itemType === 'QUOTA' || t.paymentMethod === 'MEMBERSHIP_QUOTA' || parseFloat(t.amount) === 0
+      );
       if (!hasQuotaTx) {
         list = [
           {
@@ -393,7 +395,7 @@ export default function MemberTransactionsPage() {
                     {paginatedTransactions.map((tx, idx) => {
                       const typeMeta = getItemTypeBadge(tx.itemType, tx.paymentStatus, tx.amount);
                       const isRefund = tx.paymentStatus === 'REFUNDED';
-                      const isQuota = tx.itemType === 'QUOTA' || parseFloat(tx.amount) === 0;
+                      const isQuota = tx.itemType === 'QUOTA' || tx.paymentMethod === 'MEMBERSHIP_QUOTA' || parseFloat(tx.amount) === 0;
 
                       return (
                         <tr 

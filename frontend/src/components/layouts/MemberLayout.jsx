@@ -72,7 +72,7 @@ export default function MemberLayout({ children }) {
       subtitle: 'Gửi nhận xét về lớp học và huấn luyện viên',
     },
     {
-      label: 'Gói tập & Quyền lợi',
+      label: 'Hạng hội viên & Quyền lợi',
       path: '/member/packages',
       icon: 'card_membership',
       section: 'Gói tập & Tài khoản',

@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useLocation, useNavigate, useParams } from 'react-router-dom';
 import MemberLayout from '../../components/layouts/MemberLayout';
+import { useApp } from '../../context/AppContext';
 import {
   checkoutBooking,
   getAvailableCourtSlots,
@@ -835,6 +836,7 @@ function CoachPicker({ _sportId }) {
 function CheckoutPage({ bookingType, itemId }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { showToast } = useApp();
   const searchParams = new URLSearchParams(location.search);
   const startTime = searchParams.get('startTime');
   const endTime = searchParams.get('endTime');
@@ -991,7 +993,14 @@ function CheckoutPage({ bookingType, itemId }) {
     return Math.max(1, diffHours);
   }, [bookingType, endTime, quote?.bookingType, quote?.endTime, quote?.startTime, startTime]);
 
-  const requiredQuota = (quote?.bookingType || bookingType)?.toUpperCase() === 'COURT' ? bookedHours : 1;
+  const isCourtBooking = (quote?.bookingType || bookingType)?.toUpperCase() === 'COURT';
+  const requiredQuota = isCourtBooking ? bookedHours : 1;
+  const quotaUnit = isCourtBooking ? 'giờ' : 'buổi';
+  const quotaUnitTitle = isCourtBooking ? 'Giờ' : 'Buổi';
+  const quotaScopeLabel = isCourtBooking ? 'Giờ Sân' : 'Buổi Tập';
+  const remainingQuotaBalance = isCourtBooking ? memberQuota.remainingQuotaCourts : memberQuota.remainingQuota;
+  const initialQuotaBalance = isCourtBooking ? memberQuota.initialQuotaCourts : memberQuota.initialQuota;
+  const insufficientQuotaMessage = `Số ${isCourtBooking ? 'giờ sân' : 'buổi tập'} trong gói hội viên của bạn không đủ (cần ${requiredQuota} ${quotaUnit}${isCourtBooking ? ` cho ${bookedHours} giờ đặt sân` : ''}, hiện còn ${remainingQuotaBalance} ${quotaUnit}). Vui lòng thanh toán theo giá bán lẻ hoặc nạp thêm gói tập. Quy chế trung tâm nghiêm cấm tách một phần quota và bù tiền mặt.`;
 
   const originalPrice = quote?.originalAmount ?? quote?.amount ?? 0;
   const systemDiscount = quote?.discountAmount ?? 0;
@@ -1007,10 +1016,8 @@ function CheckoutPage({ bookingType, itemId }) {
 
     // Business rule: Quota validation
     if (paymentMode === 'QUOTA') {
-      if (memberQuota.remainingQuotaCourts < requiredQuota) {
-        setError(
-          `Số giờ sân trong gói hội viên của bạn không đủ (cần ${requiredQuota} giờ cho ${bookedHours} giờ đặt sân, hiện còn ${memberQuota.remainingQuotaCourts} giờ). Vui lòng thanh toán theo giá bán lẻ hoặc nạp thêm gói tập. Quy chế trung tâm nghiêm cấm tách một phần quota và bù tiền mặt.`
-        );
+      if (remainingQuotaBalance < requiredQuota) {
+        setError(insufficientQuotaMessage);
         setSubmitting(false);
         return;
       }
@@ -1027,6 +1034,12 @@ function CheckoutPage({ bookingType, itemId }) {
         );
         
         // Backend đã trả về quotaMessage, không tự tạo
+        showToast(
+          'Đặt lịch thành công!',
+          confirmation?.quotaMessage || 'Lịch đặt chỗ bằng quota đã được xác nhận.',
+          'success'
+        );
+        window.dispatchEvent(new Event('sporthub:notifications-updated'));
         navigate('/member/book/confirmation', { replace: true, state: { confirmation } });
       } catch (requestError) {
         setError(requestError.message || 'Không thể đặt chỗ bằng quota.');
@@ -1131,7 +1144,7 @@ function CheckoutPage({ bookingType, itemId }) {
   const actionBtnLabel = submitting
     ? 'Đang xử lý...'
     : paymentMode === 'QUOTA'
-    ? `Xác Nhận Đặt Chỗ — Trừ ${requiredQuota} Giờ Sân (Còn: ${memberQuota.remainingQuotaCourts - requiredQuota} giờ)`
+    ? `Xác Nhận Đặt Chỗ — Trừ ${requiredQuota} ${quotaScopeLabel} (Còn: ${remainingQuotaBalance - requiredQuota} ${quotaUnit})`
     : paymentMethod === 'CASH_COUNTER'
     ? `Giữ Chỗ (Thanh Toán Tại Quầy) — ${formatMoney(finalPrice)}`
     : paymentMethod === 'VNPAY'
@@ -1141,7 +1154,7 @@ function CheckoutPage({ bookingType, itemId }) {
   return (
     <PageFrame
       title="Xác nhận booking & thanh toán"
-      description="Lựa chọn khấu trừ số buổi từ gói hội viên hoặc thanh toán theo giá niêm yết bán lẻ."
+      description={`Lựa chọn khấu trừ ${isCourtBooking ? 'số giờ sân' : 'số buổi'} từ gói hội viên hoặc thanh toán theo giá niêm yết bán lẻ.`}
     >
       <ErrorNotice error={error} />
       {loading ? (
@@ -1206,7 +1219,7 @@ function CheckoutPage({ bookingType, itemId }) {
                   <span className="material-symbols-outlined text-sm text-orange-600">verified</span>
                   Khấu trừ Quota Gói Hội Viên ({memberQuota.packageName}):
                 </span>
-                <strong className="font-bold text-orange-700">Trừ {requiredQuota} Buổi (0đ)</strong>
+                <strong className="font-bold text-orange-700">Trừ {requiredQuota} {quotaUnitTitle} (0đ)</strong>
               </div>
             )}
 
@@ -1247,8 +1260,8 @@ function CheckoutPage({ bookingType, itemId }) {
               <button
                 type="button"
                 onClick={() => {
-                  if (memberQuota.remainingQuotaCourts < requiredQuota) {
-                    setError(`Số giờ sân trong gói hội viên của bạn không đủ (cần ${requiredQuota} giờ cho ${bookedHours} giờ đặt sân, hiện còn ${memberQuota.remainingQuotaCourts} giờ). Vui lòng thanh toán theo giá bán lẻ hoặc nạp thêm gói tập. Quy chế trung tâm nghiêm cấm tách một phần quota và bù tiền mặt.`);
+                  if (remainingQuotaBalance < requiredQuota) {
+                    setError(insufficientQuotaMessage);
                     return;
                   }
                   setError('');
@@ -1258,13 +1271,13 @@ function CheckoutPage({ bookingType, itemId }) {
                   paymentMode === 'QUOTA'
                     ? 'border-orange-500 bg-orange-50/50 ring-2 ring-orange-500/20'
                     : 'border-slate-200 bg-white hover:border-slate-300'
-                } ${memberQuota.remainingQuotaCourts < requiredQuota ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`}
+                } ${remainingQuotaBalance < requiredQuota ? 'opacity-60 cursor-not-allowed bg-slate-50' : ''}`}
               >
                 <div>
                   <div className="flex items-center justify-between">
                     <span className="font-bold text-xs text-slate-900 flex items-center gap-1.5">
                       <span className="material-symbols-outlined text-[18px] text-orange-600">card_membership</span>
-                      Dùng Giờ Sân Gói Hội Viên ({requiredQuota} giờ)
+                      Dùng {quotaScopeLabel} Gói Hội Viên ({requiredQuota} {quotaUnit})
                     </span>
                     {paymentMode === 'QUOTA' && (
                       <span className="w-2.5 h-2.5 rounded-full bg-orange-500"></span>
@@ -1274,8 +1287,8 @@ function CheckoutPage({ bookingType, itemId }) {
                 </div>
                 <div className="mt-3 pt-2 border-t border-slate-100 flex items-center justify-between text-xs">
                   <span className="text-slate-500">Số dư khả dụng:</span>
-                  <span className={`font-extrabold ${memberQuota.remainingQuotaCourts >= requiredQuota ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {memberQuota.remainingQuotaCourts} / {memberQuota.initialQuotaCourts} giờ
+                  <span className={`font-extrabold ${remainingQuotaBalance >= requiredQuota ? 'text-emerald-600' : 'text-red-500'}`}>
+                    {remainingQuotaBalance} / {initialQuotaBalance} {quotaUnit}
                   </span>
                 </div>
               </button>

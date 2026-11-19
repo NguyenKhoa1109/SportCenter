@@ -292,6 +292,7 @@ export default function MemberClassesPage() {
           confirmation.quotaMessage || `Lớp "${registeringSession.className}" đã được thêm vào Thời khóa biểu! Đã trừ ${requiredQuota} buổi từ gói hội viên.`,
           'success'
         );
+        window.dispatchEvent(new Event('sporthub:notifications-updated'));
         setRegisteringSession(null);
         await loadData();
       } catch (err) {
@@ -415,6 +416,7 @@ export default function MemberClassesPage() {
       }
       
       setCancelingBooking(null);
+      window.dispatchEvent(new Event('sporthub:notifications-updated'));
       await loadData();
     } catch (err) {
       showToast('Không thể hủy lớp', err.message || 'Chỉ được hủy trước giờ bắt đầu ít nhất 2 tiếng.', 'error');

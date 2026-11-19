@@ -163,13 +163,14 @@ export default function MemberSchedulePage() {
       } else {
         // Fallback: old behavior (immediate cancel)
         const isClass = target.bookingType === 'CLASS';
-        const successText = `Đã hủy ${isClass ? 'lớp học' : 'sân'} thành công`;
+        const successText = response?.message || `Đã hủy ${isClass ? 'lớp học' : 'sân'} thành công`;
         setStatusMessage(successText);
         showToast(
-          'Hủy đặt chỗ thành công',
-          `Đã hủy thành công ${target.title}.`,
+          response?.refunded ? 'Hủy lịch & hoàn quota thành công' : 'Hủy đặt chỗ thành công',
+          response?.message || `Đã hủy thành công ${target.title}.`,
           'success'
         );
+        window.dispatchEvent(new Event('sporthub:notifications-updated'));
         // Remove from UI immediately (old flow)
         setScheduleEntries((prev) =>
           prev.filter(

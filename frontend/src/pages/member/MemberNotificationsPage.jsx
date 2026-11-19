@@ -119,6 +119,13 @@ export default function MemberNotificationsPage() {
           badge: 'Hoàn Tiền',
           badgeColor: 'bg-indigo-100 text-indigo-800',
         };
+      case 'BOOKING':
+        return {
+          icon: 'confirmation_number',
+          color: 'bg-emerald-50 text-emerald-600 border-emerald-200',
+          badge: 'Đặt Lịch & Quota',
+          badgeColor: 'bg-emerald-100 text-emerald-800',
+        };
       default:
         return {
           icon: 'campaign',

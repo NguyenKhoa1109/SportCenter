@@ -97,10 +97,10 @@ export default function PricingPage() {
               className="text-3xl sm:text-4xl font-bold text-slate-900 tracking-normal leading-[1.32] sm:leading-[1.32]"
               style={{ lineHeight: 1.35 }}
             >
-              Chọn gói tập <span className="text-orange-500">phù hợp với bạn</span>
+              Chọn hạng hội viên <span className="text-orange-500">phù hợp với bạn</span>
             </h1>
             <p className="text-xs sm:text-sm text-slate-600 font-normal leading-relaxed max-w-2xl mx-auto">
-              Bảng giá niêm yết minh bạch, không phụ phí ẩn, tích hợp trọn vẹn tiện ích rèn luyện và dịch vụ kiểm tra thể trạng.
+              Các hạng hội viên với số buổi tập và giờ sân được quy định rõ theo từng kỳ.
             </p>
           </div>
 
@@ -154,9 +154,9 @@ export default function PricingPage() {
           {/* Lưới hiển thị các gói tập từ database */}
           {!loading && packages.length > 0 && (
             <section className="grid gap-5 md:grid-cols-2 lg:grid-cols-3">
-              {packages.map((pkg, idx) => {
+              {packages.map((pkg) => {
                 const badgeInfo = getAccessBadge(pkg.accessType);
-                const isFeatured = idx === 0 || pkg.name.toLowerCase().includes('vip') || pkg.name.toLowerCase().includes('diamond');
+                const isFeatured = pkg.membershipTier === 'GOLD';
 
                 return (
                   <article
@@ -221,13 +221,13 @@ export default function PricingPage() {
                           <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-orange-500 text-[18px]">check_circle</span>
                             <span className={isFeatured ? 'text-slate-200' : 'text-slate-700'}>
-                              Miễn phí đo InBody 770
+                              {pkg.quotaSessions || 0} buổi lớp học hoặc PT / kỳ
                             </span>
                           </div>
                           <div className="flex items-center gap-2">
                             <span className="material-symbols-outlined text-orange-500 text-[18px]">check_circle</span>
                             <span className={isFeatured ? 'text-slate-200' : 'text-slate-700'}>
-                              Tủ Locker thông minh &amp; phòng tắm nóng lạnh
+                              {pkg.quotaCourts || 0} giờ sân / kỳ
                             </span>
                           </div>
                         </div>

@@ -1,8 +1,8 @@
+import { useNavigate } from 'react-router-dom';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { CardGridSkeleton, TableSkeleton } from '../../components/common/Skeleton';
 import {
-  createManagerClassSession,
   getManagerCoaches,
   getManagerDomainSports,
   getManagerFacilities,
@@ -21,18 +21,6 @@ import { apiRequest } from '../../services/apiClient';
 import { useApp } from '../../context/AppContext';
 import { coachTeachesSport } from '../../utils/coachSport';
 
-const emptySession = {
-  className: '',
-  sportId: '',
-  coachId: '',
-  facilityId: '',
-  startTime: '',
-  endTime: '',
-  sessionCount: 1,
-  maxSlots: 8,
-  priceAmount: 0,
-};
-
 const getSportIcon = (sportName = '') => {
   const s = String(sportName || '').toLowerCase();
   if (s.includes('pickleball') || s.includes('tennis')) return 'sports_tennis';
@@ -49,6 +37,7 @@ const getSportIcon = (sportName = '') => {
 
 export default function AdminFacilitiesPage() {
   const { showToast } = useApp();
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('facilities'); // 'facilities' | 'maintenance'
 
   const [facilities, setFacilities] = useState([]);
@@ -56,12 +45,9 @@ export default function AdminFacilitiesPage() {
   const [sports, setSports] = useState([]);
   const [coaches, setCoaches] = useState([]);
   const [selectedSportFilter, setSelectedSportFilter] = useState('ALL');
-  const [showAddClassModal, setShowAddClassModal] = useState(false);
-  const [sessionForm, setSessionForm] = useState(emptySession);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // Maintenance Windows State (MGR-19)
   const [maintenances, setMaintenances] = useState([]);
@@ -211,19 +197,6 @@ export default function AdminFacilitiesPage() {
     loadMaintenance();
   }, [loadFacilities, loadMaintenance]);
 
-  const availableFacilities = facilities.filter(
-    (facility) =>
-      facility.status === 'AVAILABLE' &&
-      (!sessionForm.sportId || String(facility.sportId) === sessionForm.sportId),
-  );
-
-  const selectedCreateSport = sports.find((s) => String(s.sportId) === String(sessionForm.sportId));
-  const eligibleCreateCoaches = useMemo(() => {
-    if (!sessionForm.sportId) return [];
-    const sportName = selectedCreateSport?.sportName || selectedCreateSport?.name || '';
-    return coaches.filter((coach) => coachTeachesSport(coach, sessionForm.sportId, sportName));
-  }, [coaches, sessionForm.sportId, selectedCreateSport]);
-
   const editSportId = selectedSession?.sportId;
   const editSport = sports.find((s) => String(s.sportId) === String(editSportId));
   const editSportName = selectedSession?.sportName || editSport?.sportName || editSport?.name || '';
@@ -285,35 +258,6 @@ export default function AdminFacilitiesPage() {
       showToast('Cập nhật thành công', `Đã đổi trạng thái cơ sở "${facility.facilityName}".`, 'info');
     } catch (requestError) {
       setError(requestError.message || 'Không thể cập nhật trạng thái cơ sở.');
-    }
-  };
-
-  const handleCreateSession = async (event) => {
-    event.preventDefault();
-    setError('');
-    setSuccess('');
-    setSaving(true);
-    try {
-      const createdSessions = await createManagerClassSession({
-        ...sessionForm,
-        sportId: Number(sessionForm.sportId),
-        coachId: Number(sessionForm.coachId),
-        facilityId: Number(sessionForm.facilityId),
-        sessionCount: Number(sessionForm.sessionCount),
-        maxSlots: Number(sessionForm.maxSlots),
-        priceAmount: Number(sessionForm.priceAmount),
-      });
-      setShowAddClassModal(false);
-      setSessionForm(emptySession);
-      await loadClassSessions();
-      setSuccess(`Đã tạo ${createdSessions.length} buổi học, lặp hàng tuần theo thứ và giờ đã chọn.`);
-      showToast('Thành công', `Đã tạo ${createdSessions.length} ca học thành công.`, 'success');
-    } catch (requestError) {
-      const msg = requestError.message || 'Không thể tạo lịch lớp.';
-      setError(msg);
-      showToast('Lỗi tạo lịch lớp', msg, 'danger');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -424,8 +368,8 @@ export default function AdminFacilitiesPage() {
             </button>
             <button
               type="button"
-              onClick={() => setShowAddClassModal(true)}
-              disabled={!sports.length || !coaches.length || !availableFacilities.length}
+              onClick={() => navigate('/admin/classes/new')}
+              disabled={!sports.length || !coaches.length || !facilities.some((facility) => facility.status === 'AVAILABLE')}
               className="flex items-center gap-2 rounded-xl bg-orange-500 hover:bg-orange-600 px-4 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm shadow-orange-500/25 active:scale-[0.98] transition-all disabled:cursor-not-allowed disabled:opacity-50 cursor-pointer whitespace-nowrap"
             >
               <span className="material-symbols-outlined text-[18px]">add_circle</span>
@@ -461,11 +405,7 @@ export default function AdminFacilitiesPage() {
             {error}
           </p>
         )}
-        {success && (
-          <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-xs font-bold text-emerald-800">
-            {success}
-          </p>
-        )}
+
 
         {/* Tab 1: Facilities List (Grouped by Sport) */}
         {activeTab === 'facilities' && (
@@ -647,7 +587,7 @@ export default function AdminFacilitiesPage() {
                 </button>
                 <button
                   type="button"
-                  onClick={() => setShowAddClassModal(true)}
+                  onClick={() => navigate('/admin/classes/new')}
                   className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold shadow-sm transition-all cursor-pointer"
                 >
                   <span className="material-symbols-outlined text-[16px]">add_circle</span>
@@ -1062,148 +1002,6 @@ export default function AdminFacilitiesPage() {
                 </div>
               </form>
             </div>
-          </div>
-        )}
-
-      {/* Modal Tạo Lịch Lớp */}
-      {showAddClassModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 p-4 backdrop-blur-xs !m-0">
-            <form onSubmit={handleCreateSession}
-              className="w-full max-w-xl space-y-4 rounded-2xl bg-white p-6 shadow-xl">
-              <h2 className="text-lg font-bold text-slate-900">Tạo lịch lớp học mới</h2>
-              <label className="block text-xs font-bold text-slate-700">
-                Tên lớp học
-                <input required value={sessionForm.className}
-                  onChange={(event) => setSessionForm({ ...sessionForm, className: event.target.value })}
-                  placeholder="Ví dụ: Lớp Tennis cơ bản cuối tuần"
-                  className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-              </label>
-              <label className="block text-xs font-bold text-slate-700">
-                Bộ môn
-                <select
-                  required
-                  value={sessionForm.sportId}
-                  onChange={(event) => {
-                    const nextSportId = event.target.value;
-                    const nextSport = sports.find((s) => String(s.sportId) === String(nextSportId));
-                    const keepCoach = nextSportId && sessionForm.coachId
-                      ? coaches.some(
-                          (coach) =>
-                            String(coach.userId) === String(sessionForm.coachId) &&
-                            coachTeachesSport(coach, nextSportId, nextSport?.sportName || nextSport?.name || ''),
-                        )
-                      : false;
-                    setSessionForm({
-                      ...sessionForm,
-                      sportId: nextSportId,
-                      facilityId: '',
-                      coachId: keepCoach ? sessionForm.coachId : '',
-                    });
-                  }}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                >
-                  <option value="">Chọn bộ môn</option>
-                  {sports.map((sport) => (
-                    <option key={sport.sportId} value={sport.sportId}>
-                      {sport.sportName || sport.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-              <label className="block text-xs font-bold text-slate-700">
-                Cơ sở
-                <select
-                  required
-                  value={sessionForm.facilityId}
-                  onChange={(event) => setSessionForm({ ...sessionForm, facilityId: event.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm"
-                >
-                  <option value="">
-                    {sessionForm.sportId
-                      ? availableFacilities.length === 0
-                        ? '-- Không có cơ sở khả dụng cho bộ môn này --'
-                        : `-- Chọn cơ sở còn hoạt động (${availableFacilities.length}) --`
-                      : '-- Vui lòng chọn bộ môn trước --'}
-                  </option>
-                  {availableFacilities.map((facility) => (
-                    <option key={facility.facilityId} value={facility.facilityId}>{facility.facilityName}</option>
-                  ))}
-                </select>
-                {sessionForm.sportId && availableFacilities.length === 0 && (
-                  <p className="mt-1 text-xs text-rose-500 font-normal">
-                    ⚠️ Chưa có cơ sở/phòng tập nào đang ở trạng thái hoạt động cho bộ môn này.
-                  </p>
-                )}
-              </label>
-              <label className="block text-xs font-bold text-slate-700">
-                Huấn luyện viên
-                <select
-                  required
-                  disabled={!sessionForm.sportId || eligibleCreateCoaches.length === 0}
-                  value={sessionForm.coachId}
-                  onChange={(event) => setSessionForm({ ...sessionForm, coachId: event.target.value })}
-                  className="mt-1 w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm disabled:bg-slate-100 disabled:text-slate-400"
-                >
-                  <option value="">
-                    {!sessionForm.sportId
-                      ? 'Vui lòng chọn bộ môn trước'
-                      : eligibleCreateCoaches.length === 0
-                        ? 'Chưa có HLV phù hợp cho bộ môn này'
-                        : 'Chọn huấn luyện viên'}
-                  </option>
-                  {eligibleCreateCoaches.map((coach) => (
-                    <option key={coach.userId} value={coach.userId}>
-                      {coach.fullName}{coach.specialty ? ` (${coach.specialty})` : ''}
-                    </option>
-                  ))}
-                </select>
-                {sessionForm.sportId && eligibleCreateCoaches.length === 0 && (
-                  <p className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
-                    Chưa có HLV nào dạy bộ môn {selectedCreateSport?.sportName || selectedCreateSport?.name}. Vui lòng gán bộ môn cho HLV trong mục Nhân sự &amp; Khách.
-                  </p>
-                )}
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className="text-xs font-bold text-slate-700">
-                  Bắt đầu
-                  <input required type="datetime-local" value={sessionForm.startTime}
-                    onChange={(event) => setSessionForm({ ...sessionForm, startTime: event.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm" />
-                </label>
-                <label className="text-xs font-bold text-slate-700">
-                  Kết thúc
-                  <input required type="datetime-local" value={sessionForm.endTime}
-                    onChange={(event) => setSessionForm({ ...sessionForm, endTime: event.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-2 py-2 text-sm" />
-                </label>
-                <label className="text-xs font-bold text-slate-700">
-                  Số buổi (hàng tuần)
-                  <input required type="number" min="1" max="52" value={sessionForm.sessionCount}
-                    onChange={(event) => setSessionForm({ ...sessionForm, sessionCount: event.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-                </label>
-                <label className="text-xs font-bold text-slate-700">
-                  Sĩ số tối đa
-                  <input required type="number" min="1" value={sessionForm.maxSlots}
-                    onChange={(event) => setSessionForm({ ...sessionForm, maxSlots: event.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-                </label>
-                <label className="text-xs font-bold text-slate-700">
-                  Học phí (VND)
-                  <input type="number" min="0" step="1000" value={sessionForm.priceAmount}
-                    onChange={(event) => setSessionForm({ ...sessionForm, priceAmount: event.target.value })}
-                    className="mt-1 w-full rounded-lg border border-slate-300 px-3 py-2 text-sm" />
-                </label>
-              </div>
-              <div className="flex justify-end gap-2">
-                <button type="button" onClick={() => setShowAddClassModal(false)}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-xs font-bold">Hủy</button>
-                <button type="submit" disabled={saving}
-                  className="rounded-xl bg-orange-500 hover:bg-orange-600 px-5 py-2.5 text-xs font-bold uppercase tracking-wider text-white shadow-sm shadow-orange-500/20 active:scale-[0.98] transition-all disabled:opacity-60">
-                  {saving ? 'Đang lưu...' : 'Tạo Lịch Ca Học'}
-                </button>
-              </div>
-            </form>
           </div>
         )}
 

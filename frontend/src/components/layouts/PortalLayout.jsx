@@ -22,14 +22,6 @@ const EXTRA_ROLE_PAGES = {
       icon: 'add_circle',
     },
   ],
-  coach: [
-    {
-      title: 'Thu nhập & Thù lao ca dạy',
-      subtitle: 'Theo dõi thu nhập buổi dạy và hoa hồng HLV',
-      path: '/coach/income',
-      icon: 'payments',
-    },
-  ],
 };
 
 const NOTIFICATION_INBOX_ROUTES = {
@@ -38,7 +30,7 @@ const NOTIFICATION_INBOX_ROUTES = {
 };
 
 const SECONDARY_DROPDOWN_LINKS = {
-  member: { label: 'Gói tập & Quyền lợi', path: '/member/packages', icon: 'card_membership' },
+  member: { label: 'Hạng hội viên & Quyền lợi', path: '/member/packages', icon: 'card_membership' },
   coach: { label: 'Về trang công khai', path: '/', icon: 'public' },
   receptionist: { label: 'Về trang công khai', path: '/', icon: 'public' },
   admin: { label: 'Về trang công khai', path: '/', icon: 'public' },
@@ -153,6 +145,9 @@ export default function PortalLayout({
 
   useEffect(() => {
     fetchLiveNotifications();
+    const onNotificationsUpdated = () => fetchLiveNotifications();
+    window.addEventListener('sporthub:notifications-updated', onNotificationsUpdated);
+    return () => window.removeEventListener('sporthub:notifications-updated', onNotificationsUpdated);
   }, [fetchLiveNotifications]);
 
   const roleName = ROLE_LABELS[role] || 'Hệ thống';
