@@ -373,15 +373,57 @@ public class ReceptionistController {
                 savedTransaction.getReferenceCode());
     }
 
+    public ReceptionistReportResponse getDailyReport(
+            LocalDate date,
+            Authentication authentication) {
+        return getDailyReport(date, null, null, null, authentication);
+    }
+
     @GetMapping("/report")
     @Transactional(readOnly = true)
     public ReceptionistReportResponse getDailyReport(
             @RequestParam(required = false) LocalDate date,
+            @RequestParam(required = false) String period,
+            @RequestParam(required = false) LocalDate startDate,
+            @RequestParam(required = false) LocalDate endDate,
             Authentication authentication) {
         requireStaff(authentication);
+        String periodMode = period != null ? period.toLowerCase(Locale.ROOT).trim() : "day";
         LocalDate reportDate = date == null ? LocalDate.now() : date;
-        LocalDateTime startOfDay = reportDate.atStartOfDay();
-        LocalDateTime endOfDay = reportDate.plusDays(1).atStartOfDay();
+        LocalDateTime startOfDay;
+        LocalDateTime endOfDay;
+        LocalDate calculatedStart;
+        LocalDate calculatedEnd;
+
+        if (startDate != null && endDate != null) {
+            calculatedStart = startDate;
+            calculatedEnd = endDate;
+            startOfDay = startDate.atStartOfDay();
+            endOfDay = endDate.plusDays(1).atStartOfDay();
+            periodMode = "custom";
+        } else if ("month".equals(periodMode)) {
+            calculatedStart = reportDate.withDayOfMonth(1);
+            calculatedEnd = reportDate.withDayOfMonth(reportDate.lengthOfMonth());
+            startOfDay = calculatedStart.atStartOfDay();
+            endOfDay = calculatedEnd.plusDays(1).atStartOfDay();
+        } else if ("year".equals(periodMode)) {
+            calculatedStart = LocalDate.of(reportDate.getYear(), 1, 1);
+            calculatedEnd = LocalDate.of(reportDate.getYear(), 12, 31);
+            startOfDay = calculatedStart.atStartOfDay();
+            endOfDay = calculatedEnd.plusDays(1).atStartOfDay();
+        } else if ("all".equals(periodMode)) {
+            calculatedStart = LocalDate.of(2020, 1, 1);
+            calculatedEnd = LocalDate.now().plusYears(5);
+            startOfDay = calculatedStart.atStartOfDay();
+            endOfDay = calculatedEnd.atStartOfDay();
+        } else {
+            // "day"
+            calculatedStart = reportDate;
+            calculatedEnd = reportDate;
+            startOfDay = reportDate.atStartOfDay();
+            endOfDay = reportDate.plusDays(1).atStartOfDay();
+            periodMode = "day";
+        }
 
         List<ReceptionPayment> payments = paymentRepository
                 .findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(startOfDay, endOfDay);
@@ -400,13 +442,23 @@ public class ReceptionistController {
                     ? tx.getReferenceCode()
                     : "trans-" + tx.getPaymentId();
 
+            String type = tx.getItemType() != null && !tx.getItemType().isBlank()
+                    ? tx.getItemType()
+                    : (tx.getBookingType() != null ? tx.getBookingType() : "Dịch vụ");
+            String desc = tx.getItemDescription() != null && !tx.getItemDescription().isBlank()
+                    ? tx.getItemDescription()
+                    : ("Thanh toán " + (tx.getBookingType() != null ? tx.getBookingType() : "dịch vụ"));
+
             allPayments.add(new PaymentEntry(
                     id,
                     tx.getMemberId(),
                     tx.getAmount(),
                     normalizeMethod(tx.getPaymentMethod()),
                     normalizeStatus(tx.getPaymentStatus()),
-                    tx.getCreatedAt()));
+                    tx.getCreatedAt(),
+                    null,
+                    type,
+                    desc));
 
             // Find matching ReceptionPayment to prevent double counting
             for (ReceptionPayment rp : payments) {
@@ -437,7 +489,10 @@ public class ReceptionistController {
                     rp.getAmount(),
                     normalizeMethod(rp.getPaymentMethod()),
                     normalizeStatus(rp.getPaymentStatus()),
-                    rp.getCreatedAt()));
+                    rp.getCreatedAt(),
+                    null,
+                    "POS",
+                    "Thanh toán gói tập / dịch vụ tại quầy"));
         }
 
         // 3. Include paid equipment rentals collected on reportDate
@@ -462,7 +517,9 @@ public class ReceptionistController {
                             normalizeMethod(method),
                             "Hoàn tất",
                             loan.getReturnedAt(),
-                            loan.getMemberName()));
+                            loan.getMemberName(),
+                            "EQUIPMENT",
+                            "Thu phí thuê " + (loan.getItemName() != null ? loan.getItemName() : "dụng cụ") + " (SL: " + loan.getQuantity() + ")"));
                 }
             }
         }
@@ -506,13 +563,19 @@ public class ReceptionistController {
                             : (payment.fallbackMemberName() != null && !payment.fallbackMemberName().isBlank()
                                     ? payment.fallbackMemberName()
                                     : "Không rõ hội viên");
+                    String phone = member != null ? member.getPhone() : null;
+                    String email = member != null ? member.getEmail() : null;
                     return new ReceptionistReportResponse.PaymentRecord(
                             payment.id(),
                             memberName,
                             payment.amount(),
                             payment.method(),
                             payment.status(),
-                            payment.createdAt());
+                            payment.createdAt(),
+                            phone,
+                            email,
+                            payment.type(),
+                            payment.description());
                 })
                 .sorted(java.util.Comparator.comparing(
                         ReceptionistReportResponse.PaymentRecord::createdAt,
@@ -524,9 +587,12 @@ public class ReceptionistController {
                 totalRevenue,
                 completed.size(),
                 userRepository.countByRoleIgnoreCaseAndCreatedAtGreaterThanEqualAndCreatedAtLessThan(
-                        "MEMBER", reportDate.atStartOfDay(), reportDate.plusDays(1).atStartOfDay()),
+                        "MEMBER", startOfDay, endOfDay),
                 methodTotals,
-                records);
+                records,
+                periodMode,
+                calculatedStart,
+                calculatedEnd);
     }
 
     @GetMapping("/domain-sports")
@@ -1183,7 +1249,19 @@ public class ReceptionistController {
             String method,
             String status,
             java.time.LocalDateTime createdAt,
-            String fallbackMemberName) {
+            String fallbackMemberName,
+            String type,
+            String description) {
+        private PaymentEntry(
+                String id,
+                Long memberId,
+                BigDecimal amount,
+                String method,
+                String status,
+                java.time.LocalDateTime createdAt,
+                String fallbackMemberName) {
+            this(id, memberId, amount, method, status, createdAt, fallbackMemberName, "Dịch vụ", "Thanh toán dịch vụ");
+        }
         private PaymentEntry(
                 String id,
                 Long memberId,
@@ -1191,7 +1269,7 @@ public class ReceptionistController {
                 String method,
                 String status,
                 java.time.LocalDateTime createdAt) {
-            this(id, memberId, amount, method, status, createdAt, null);
+            this(id, memberId, amount, method, status, createdAt, null, "Dịch vụ", "Thanh toán dịch vụ");
         }
     }
 }
