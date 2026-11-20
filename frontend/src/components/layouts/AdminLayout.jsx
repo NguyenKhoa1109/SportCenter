@@ -17,7 +17,7 @@ const toMondayStr = (date) => {
   return toLocalDateStr(monday);
 };
 
-export default function AdminLayout({ children }) {
+export default function AdminLayout({ children, dashboardQuickAction }) {
   const { currentUser, showToast } = useApp();
   const adminMenu = [
     {
@@ -27,7 +27,7 @@ export default function AdminLayout({ children }) {
       section: 'Vận hành & Cơ sở',
       mobilePin: true,
       mobileLabel: 'Tổng quan',
-      subtitle: 'Doanh thu, tỉ lệ lấp đầy sân, báo cáo vận hành',
+      subtitle: 'Doanh thu, hội viên và hoạt động lớp học',
     },
     {
       label: 'Lịch & Sân bãi',
@@ -127,7 +127,7 @@ export default function AdminLayout({ children }) {
       roleBadge="F SPORT ADMIN"
       currentUser={currentUser}
       menuItems={adminMenu}
-      quickAction={{
+      quickAction={dashboardQuickAction || {
         label: 'Xuất Báo Cáo',
         icon: 'download',
         onClick: async () => {

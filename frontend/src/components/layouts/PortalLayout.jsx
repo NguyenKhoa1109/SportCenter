@@ -379,9 +379,10 @@ export default function PortalLayout({
               <button
                 onClick={quickAction.onClick}
                 type="button"
+                disabled={quickAction.disabled}
                 title={quickAction.label}
                 aria-label={quickAction.label}
-                className="h-9 px-2.5 sm:px-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs uppercase tracking-wider font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-orange-500/20 cursor-pointer shrink-0"
+                className="h-9 px-2.5 sm:px-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs uppercase tracking-wider font-bold flex items-center gap-1.5 transition-all shadow-sm shadow-orange-500/20 cursor-pointer shrink-0 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <span className="material-symbols-outlined text-[18px]">{quickAction.icon}</span>
                 <span className="hidden sm:inline">{quickAction.label}</span>

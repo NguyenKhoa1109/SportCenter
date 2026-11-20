@@ -209,6 +209,44 @@ class ReceptionistControllerTest {
     }
 
     @Test
+    void novemberAndYearReportsIncludePaymentsFromNovemberTwentieth() {
+        LocalDate paymentDate = LocalDate.of(2026, 11, 20);
+        PaymentTransaction payment = new PaymentTransaction();
+        payment.setPaymentId(20L);
+        payment.setMemberId(9L);
+        payment.setAmount(new BigDecimal("2920000"));
+        payment.setPaymentMethod(PaymentConstants.METHOD_VNPAY);
+        payment.setPaymentStatus("PAID");
+        payment.setCreatedAt(paymentDate.atTime(9, 30));
+        when(paymentRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(any(), any()))
+                .thenReturn(List.of());
+        when(paymentTransactionRepository.findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(any(), any()))
+                .thenAnswer(invocation -> {
+                    LocalDateTime start = invocation.getArgument(0);
+                    LocalDateTime end = invocation.getArgument(1);
+                    return !payment.getCreatedAt().isBefore(start) && payment.getCreatedAt().isBefore(end)
+                            ? List.of(payment) : List.of();
+                });
+        when(userRepository.findAllById(any())).thenReturn(List.of(
+                User.builder().userId(9L).fullName("Hội viên").build()));
+
+        var day = controller.getDailyReport(paymentDate, receptionist);
+        var month = controller.getDailyReport(LocalDate.of(2026, 11, 1), "month", null, null, receptionist);
+        var year = controller.getDailyReport(LocalDate.of(2026, 1, 1), "year", null, null, receptionist);
+
+        assertEquals(new BigDecimal("2920000"), day.totalRevenue());
+        assertEquals(day.totalRevenue(), month.totalRevenue());
+        assertEquals(day.totalRevenue(), year.totalRevenue());
+        assertEquals(1, month.completedPayments());
+        assertEquals("month", month.period());
+        assertEquals(LocalDate.of(2026, 11, 1), month.startDate());
+        assertEquals(LocalDate.of(2026, 11, 30), month.endDate());
+        org.mockito.Mockito.verify(paymentTransactionRepository)
+                .findByCreatedAtGreaterThanEqualAndCreatedAtLessThanOrderByCreatedAtDesc(
+                        LocalDate.of(2026, 11, 1).atStartOfDay(), LocalDate.of(2026, 12, 1).atStartOfDay());
+    }
+
+    @Test
     void getMyProfileReturnsReceptionistProfileAndStats() {
         User staff = User.builder()
                 .userId(3L)
