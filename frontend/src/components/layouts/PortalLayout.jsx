@@ -457,6 +457,8 @@ export default function PortalLayout({
                             }
                             if (item.link) {
                               navigate(item.link);
+                            } else if (roleKey === 'member' && String(item.type || '').toUpperCase() === 'SUPPORT') {
+                              navigate('/member/tickets');
                             } else if (inboxRoute) {
                               navigate(inboxRoute);
                             }

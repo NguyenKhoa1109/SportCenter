@@ -351,7 +351,7 @@ class ManagerControllerTest {
 
             var actor = "ADMIN".equals(role) ? adminAuth : manager;
             var res = controller.createUser(req, actor);
-            assertEquals(role, res.role());
+            assertEquals("ADMIN".equals(role) ? "MANAGER" : role, res.role());
             assertEquals("ACTIVE", res.status());
         }
 

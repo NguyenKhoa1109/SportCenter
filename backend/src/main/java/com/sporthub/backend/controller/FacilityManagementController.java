@@ -156,8 +156,8 @@ public class FacilityManagementController {
         Sport sport = sportRepository.findById(request.sportId())
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Môn thể thao không tồn tại."));
         User coach = userRepository.findById(request.coachId())
-                .filter(user -> "COACH".equalsIgnoreCase(user.getRole()))
-                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Huấn luyện viên không tồn tại."));
+                .filter(user -> "COACH".equalsIgnoreCase(user.getRole()) && "ACTIVE".equalsIgnoreCase(user.getStatus()))
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Huấn luyện viên không tồn tại hoặc không đang hoạt động."));
         CoachSportHelper.requireCoachTeachesSport(coach, sport);
         if (!"AVAILABLE".equalsIgnoreCase(facility.getStatus())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Cơ sở đang bảo trì.");
@@ -269,8 +269,8 @@ public class FacilityManagementController {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ca học chưa gắn bộ môn hợp lệ.");
             }
             targetCoach = userRepository.findById(request.coachId())
-                    .filter(u -> "COACH".equalsIgnoreCase(u.getRole()))
-                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Huấn luyện viên không hợp lệ."));
+                    .filter(u -> "COACH".equalsIgnoreCase(u.getRole()) && "ACTIVE".equalsIgnoreCase(u.getStatus()))
+                    .orElseThrow(() -> new ResponseStatusException(HttpStatus.BAD_REQUEST, "Huấn luyện viên không hợp lệ hoặc không đang hoạt động."));
             CoachSportHelper.requireCoachTeachesSport(targetCoach, sessionSport);
             session.setCoachId(request.coachId());
         } else if (request.startTime() != null && request.endTime() != null && session.getCoachId() != null) {

@@ -52,7 +52,7 @@ export const getManagerFacilities = () => apiRequest('/manager/facilities');
 export const getManagerDomainSports = () => apiRequest('/manager/domain-sports');
 
 export const getManagerCoaches = () =>
-  apiRequest('/manager/users?role=COACH&page=0&size=50');
+  apiRequest('/manager/users?role=COACH&staffOnly=true&page=0&size=50');
 
 export const updateManagerFacilityStatus = (facilityId, status) =>
   apiRequest(`/manager/facilities/${facilityId}/status`, {

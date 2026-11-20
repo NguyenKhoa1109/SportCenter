@@ -201,8 +201,9 @@ export default function AdminFacilitiesPage() {
   const editSport = sports.find((s) => String(s.sportId) === String(editSportId));
   const editSportName = selectedSession?.sportName || editSport?.sportName || editSport?.name || '';
   const eligibleEditCoaches = useMemo(() => {
-    if (!editSportId) return coaches;
-    return coaches.filter((coach) => coachTeachesSport(coach, editSportId, editSportName));
+    const activeCoaches = coaches.filter((coach) => !coach.status || coach.status.toUpperCase() === 'ACTIVE');
+    if (!editSportId) return activeCoaches;
+    return activeCoaches.filter((coach) => coachTeachesSport(coach, editSportId, editSportName));
   }, [coaches, editSportId, editSportName]);
 
   const eligibleEditFacilities = useMemo(() => {

@@ -202,8 +202,14 @@ public class SupportTicketController {
             engagementService.audit(actorId, actorRole, "SUPPORT_TICKET_REPLIED",
                     "ticketId=" + id + ", status=" + saved.getStatus());
             String responderLabel = "RECEPTIONIST".equals(actorRole) ? "Lễ tân" : "Quản lý";
+            String statusLabel = switch (saved.getStatus()) {
+                case "IN_REVIEW" -> "Đang xử lý";
+                case "RESOLVED" -> "Đã giải quyết";
+                case "REJECTED" -> "Từ chối";
+                default -> saved.getStatus();
+            };
             engagementService.notifyUser(saved.getMemberId(), "Phản hồi khiếu nại",
-                    "Khiếu nại \"" + saved.getTitle() + "\" của bạn đã được " + responderLabel + " cập nhật (" + saved.getStatus() + ").", "SUPPORT");
+                    "Khiếu nại \"" + saved.getTitle() + "\" của bạn đã được " + responderLabel + " cập nhật (" + statusLabel + ").", "SUPPORT");
         }
 
         return toDTO(saved);

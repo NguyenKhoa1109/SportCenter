@@ -31,16 +31,14 @@ const formatTime = (value) =>
     minute: '2-digit',
   });
 
-const AVAILABILITY_STORAGE_KEY = 'sports_center_coach_availability';
-
 const INITIAL_AVAILABILITY = [
-  { day: 'MONDAY', label: 'Thứ Hai', morning: true, afternoon: true, evening: false },
+  { day: 'MONDAY', label: 'Thứ Hai', morning: true, afternoon: true, evening: true },
   { day: 'TUESDAY', label: 'Thứ Ba', morning: true, afternoon: true, evening: true },
-  { day: 'WEDNESDAY', label: 'Thứ Tư', morning: false, afternoon: true, evening: true },
-  { day: 'THURSDAY', label: 'Thứ Năm', morning: true, afternoon: true, evening: false },
+  { day: 'WEDNESDAY', label: 'Thứ Tư', morning: true, afternoon: true, evening: true },
+  { day: 'THURSDAY', label: 'Thứ Năm', morning: true, afternoon: true, evening: true },
   { day: 'FRIDAY', label: 'Thứ Sáu', morning: true, afternoon: true, evening: true },
-  { day: 'SATURDAY', label: 'Thứ Bảy', morning: true, afternoon: false, evening: false },
-  { day: 'SUNDAY', label: 'Chủ Nhật', morning: false, afternoon: false, evening: false },
+  { day: 'SATURDAY', label: 'Thứ Bảy', morning: true, afternoon: true, evening: true },
+  { day: 'SUNDAY', label: 'Chủ Nhật', morning: true, afternoon: true, evening: true },
 ];
 
 const normalizeAvailability = (rawList) => {
@@ -70,7 +68,7 @@ const SCHEDULE_TABS = [
 
 const SHIFT_SLOTS = [
   { key: 'morning', label: 'Sáng (06:00 - 12:00)' },
-  { key: 'afternoon', label: 'Chiều (13:00 - 18:00)' },
+  { key: 'afternoon', label: 'Chiều (12:00 - 18:00)' },
   { key: 'evening', label: 'Tối (18:00 - 22:00)' },
 ];
 
@@ -129,14 +127,8 @@ export default function CoachSchedulePage({ initialTab = 'schedule' }) {
   const error = scheduleResponse?.key === startKey ? scheduleResponse.error : '';
 
   // Availability State (COA-14)
-  const [availability, setAvailability] = useState(() => {
-    try {
-      const stored = localStorage.getItem(AVAILABILITY_STORAGE_KEY);
-      return stored ? normalizeAvailability(JSON.parse(stored)) : INITIAL_AVAILABILITY;
-    } catch {
-      return INITIAL_AVAILABILITY;
-    }
-  });
+  const [availability, setAvailability] = useState(INITIAL_AVAILABILITY);
+  const [savingAvailability, setSavingAvailability] = useState(false);
 
   // Load Coach Availability from Backend (COA-14)
   useEffect(() => {
@@ -147,9 +139,7 @@ export default function CoachSchedulePage({ initialTab = 'schedule' }) {
           try {
             const parsed = JSON.parse(res.availabilityJson);
             if (Array.isArray(parsed) && parsed.length > 0) {
-              const normalized = normalizeAvailability(parsed);
-              setAvailability(normalized);
-              localStorage.setItem(AVAILABILITY_STORAGE_KEY, JSON.stringify(normalized));
+              setAvailability(normalizeAvailability(parsed));
             }
           } catch (e) {
             console.warn('Lỗi phân tích availabilityJson:', e);
@@ -183,35 +173,41 @@ export default function CoachSchedulePage({ initialTab = 'schedule' }) {
   }, [startKey]);
 
   const handleSaveAvailability = async () => {
+    if (savingAvailability) return;
+    setSavingAvailability(true);
     try {
       await updateCoachAvailability(JSON.stringify(availability));
-      localStorage.setItem(AVAILABILITY_STORAGE_KEY, JSON.stringify(availability));
-      showToast('Đã lưu thành công', 'Lịch rảnh của bạn đã được cập nhật lên hệ thống F Sport.', 'success');
+      showToast('Đã lưu thành công', 'Lịch rảnh cố định hàng tuần đã được cập nhật lên hệ thống F Sport.', 'success');
     } catch (err) {
-      showToast('Lỗi lưu lịch', err.message || 'Không thể lưu lịch rảnh.', 'danger');
+      showToast('Không thể lưu lịch rảnh', err.message || 'Không thể lưu lịch rảnh.', 'danger');
+    } finally {
+      setSavingAvailability(false);
     }
   };
 
   // Toggle Shift Availability (COA-14)
   const handleToggleShift = async (dayCode, shiftKey) => {
+    if (savingAvailability) return;
     const updated = availability.map((item) =>
       item.day === dayCode ? { ...item, [shiftKey]: !item[shiftKey] } : item
     );
-    setAvailability(updated);
-    localStorage.setItem(AVAILABILITY_STORAGE_KEY, JSON.stringify(updated));
+    setSavingAvailability(true);
     try {
       await updateCoachAvailability(JSON.stringify(updated));
+      setAvailability(updated);
       showToast(
         'Đã lưu lịch rảnh',
         `Đã cập nhật ca ${shiftKey === 'morning' ? 'Sáng' : shiftKey === 'afternoon' ? 'Chiều' : 'Tối'} lên hệ thống.`,
         'success'
       );
-    } catch {
+    } catch (err) {
       showToast(
-        'Đã lưu cục bộ',
-        `Đã cập nhật ca ${shiftKey === 'morning' ? 'Sáng' : shiftKey === 'afternoon' ? 'Chiều' : 'Tối'}.`,
-        'info'
+        'Không thể cập nhật ca',
+        err.message || 'Không thể cập nhật lịch rảnh.',
+        'danger'
       );
+    } finally {
+      setSavingAvailability(false);
     }
   };
 
@@ -409,93 +405,70 @@ export default function CoachSchedulePage({ initialTab = 'schedule' }) {
             <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl text-xs text-blue-950 flex items-start gap-3">
               <span className="material-symbols-outlined text-blue-600 text-xl shrink-0 mt-0.5">more_time</span>
               <div>
-                <strong className="block font-bold">Chính sách: Coach tự khai báo lịch rảnh</strong>
+                <strong className="block font-bold">Chính sách lịch rảnh cố định hàng tuần (BR-12)</strong>
                 <p className="mt-1 leading-relaxed text-blue-900">
-                  Các Huấn luyện viên tự khai báo lịch rảnh theo tuần và tháng. Manager sẽ dựa trên các khung giờ này để xếp lớp,
-                  lên lịch tập PT và phân bổ học viên phù hợp nhất (Manager không tự gán ca ép buộc).
+                  Đây là mẫu khung giờ cố định hàng tuần (Thứ Hai – Chủ Nhật) để Manager xếp lớp mới và Member đặt lịch tập PT.
+                  Các ca đã có lớp được xếp lịch sẵn sẽ không thể tự tắt — nếu cần nghỉ đột xuất, vui lòng gửi{' '}
+                  <Link to="/coach/leave" className="font-bold underline text-blue-700 hover:text-blue-900">
+                    Đơn xin nghỉ &amp; đổi ca
+                  </Link>.
                 </p>
               </div>
             </div>
 
-            <WeekToolbar
-              weekStart={weekStart}
-              endOfWeek={endOfWeek}
-              onPrev={goToPrevWeek}
-              onToday={goToCurrentWeek}
-              onNext={goToNextWeek}
-            />
-
             <section className="bg-white rounded-2xl border border-slate-200 p-6 shadow-sm space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3">
                 <div>
-                  <h2 className="text-base font-bold text-slate-900">Khung giờ sẵn sàng nhận ca trong tuần</h2>
-                  <p className="text-xs text-slate-500 font-medium">Click vào ô để bật/tắt ca hoặc bấm lưu để gửi lên hệ thống</p>
+                  <h2 className="text-base font-bold text-slate-900">Khung giờ nhận ca cố định hàng tuần</h2>
+                  <p className="text-xs text-slate-500 font-medium">
+                    Áp dụng lặp lại cho mọi tuần. Click vào ô để bật/tắt ca nhận lớp mới.
+                  </p>
                 </div>
                 <button
                   type="button"
                   onClick={handleSaveAvailability}
-                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold shadow-sm transition-all cursor-pointer self-start sm:self-auto"
+                  disabled={savingAvailability}
+                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold shadow-sm transition-all cursor-pointer self-start sm:self-auto"
                 >
                   <span className="material-symbols-outlined text-[16px]">save</span>
-                  <span>Lưu Lịch Rảnh Lên Máy Chủ</span>
+                  <span>{savingAvailability ? 'Đang lưu...' : 'Lưu Lịch Rảnh Lên Máy Chủ'}</span>
                 </button>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-7 gap-3">
-                {availability.map((dayItem, index) => {
-                  const dayMeta = days[index];
-                  const isToday = dayMeta?.key === todayKey;
-                  const dateLabel = dayMeta
-                    ? dayMeta.date.toLocaleDateString('vi-VN', { day: '2-digit', month: '2-digit' })
-                    : '';
-
-                  return (
-                    <div
-                      key={dayItem.day}
-                      className={`rounded-xl border p-3 space-y-3 transition-all ${
-                        isToday
-                          ? 'border-orange-500 bg-orange-50/30 ring-2 ring-orange-500/20'
-                          : 'border-slate-200 bg-slate-50/60'
-                      }`}
-                    >
-                      <div className={`text-center pb-2.5 border-b space-y-1 ${isToday ? 'border-orange-200' : 'border-slate-200'}`}>
-                        <div className="text-xs font-black uppercase tracking-wide text-slate-900">
-                          {dayItem.label}
-                        </div>
-                        <div className="flex items-center justify-center gap-1.5 flex-wrap">
-                          <span className={`text-xs font-extrabold ${isToday ? 'text-orange-600' : 'text-slate-600'}`}>
-                            {dateLabel}
-                          </span>
-                          {isToday && (
-                            <span className="px-2 py-0.5 rounded-full bg-orange-500 text-white text-[10px] font-bold uppercase tracking-wider">
-                              Hôm nay
-                            </span>
-                          )}
-                        </div>
+                {availability.map((dayItem) => (
+                  <div
+                    key={dayItem.day}
+                    className="rounded-xl border border-slate-200 bg-slate-50/60 p-3 space-y-3 transition-all"
+                  >
+                    <div className="text-center pb-2.5 border-b border-slate-200">
+                      <div className="text-xs font-black uppercase tracking-wide text-slate-900">
+                        {dayItem.label}
                       </div>
-
-                      {SHIFT_SLOTS.map((slot) => {
-                        const active = Boolean(dayItem[slot.key]);
-                        return (
-                          <button
-                            key={slot.key}
-                            type="button"
-                            onClick={() => handleToggleShift(dayItem.day, slot.key)}
-                            aria-pressed={active}
-                            className={`w-full py-2 px-2 rounded-lg text-[11px] font-bold border transition-all cursor-pointer flex flex-col items-center gap-0.5 ${
-                              active
-                                ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
-                                : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100'
-                            }`}
-                          >
-                            <span>{slot.label}</span>
-                            <span className="text-[10px] font-semibold">{active ? '🟢 Sẵn sàng' : '⚪ Nghỉ'}</span>
-                          </button>
-                        );
-                      })}
                     </div>
-                  );
-                })}
+
+                    {SHIFT_SLOTS.map((slot) => {
+                      const active = Boolean(dayItem[slot.key]);
+                      return (
+                        <button
+                          key={slot.key}
+                          type="button"
+                          disabled={savingAvailability}
+                          onClick={() => handleToggleShift(dayItem.day, slot.key)}
+                          aria-pressed={active}
+                          className={`w-full py-2 px-2 rounded-lg text-[11px] font-bold border transition-all cursor-pointer disabled:opacity-60 disabled:cursor-not-allowed flex flex-col items-center gap-0.5 ${
+                            active
+                              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 shadow-2xs'
+                              : 'bg-white text-slate-400 border-slate-200 hover:bg-slate-100'
+                          }`}
+                        >
+                          <span>{slot.label}</span>
+                          <span className="text-[10px] font-semibold">{active ? '🟢 Sẵn sàng' : '⚪ Nghỉ'}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                ))}
               </div>
             </section>
           </div>

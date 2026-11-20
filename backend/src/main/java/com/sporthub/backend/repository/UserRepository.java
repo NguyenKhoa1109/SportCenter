@@ -19,6 +19,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     Optional<User> findByPhone(String phone);
     Optional<User> findByRfidCode(String rfidCode);
     boolean existsByEmailIgnoreCase(String email);
+    boolean existsByPhone(String phone);
+    boolean existsByPhoneAndUserIdNot(String phone, Long userId);
     boolean existsByRfidCodeAndUserIdNot(String rfidCode, Long userId);
 
     @Query("""
@@ -83,6 +85,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Query("""
             select user from User user
             where upper(user.role) = 'MEMBER'
+              and upper(trim(user.status)) <> 'INACTIVE'
               and (:query is null or :query = ''
                    or lower(user.fullName) like lower(concat('%', :query, '%'))
                    or lower(user.email) like lower(concat('%', :query, '%'))

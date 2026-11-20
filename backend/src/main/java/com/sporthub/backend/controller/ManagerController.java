@@ -449,8 +449,14 @@ public class ManagerController {
         if (!email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Địa chỉ email không hợp lệ.");
         }
+        if (!phone.matches("^[0-9]{10,15}$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số điện thoại phải gồm 10 đến 15 chữ số.");
+        }
         if (password.length() < 8) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu phải có ít nhất 8 ký tự.");
+        }
+        if (userRepository.existsByPhone(phone)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Số điện thoại này đã được sử dụng bởi tài khoản khác.");
         }
         
         Optional<User> existingUser = authService.findUserByEmail(email);
@@ -478,7 +484,10 @@ public class ManagerController {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lễ tân chỉ được phép tạo tài khoản Hội viên (MEMBER).");
             }
         } else {
-            if (!List.of("MEMBER", "COACH", "RECEPTIONIST", "MANAGER", "ADMIN").contains(targetRole)) {
+            if ("ADMIN".equals(targetRole)) {
+                targetRole = "MANAGER";
+            }
+            if (!List.of("MEMBER", "COACH", "RECEPTIONIST", "MANAGER").contains(targetRole)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vai trò không hợp lệ.");
             }
         }
@@ -749,6 +758,19 @@ public class ManagerController {
         if (request == null || request.fullName() == null || request.fullName().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Họ tên không được để trống.");
         }
+        String cleanName = request.fullName().trim();
+        if (cleanName.length() > 100) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Họ tên không được vượt quá 100 ký tự.");
+        }
+        String cleanPhone = request.phone() == null || request.phone().isBlank() ? null : request.phone().trim();
+        if (cleanPhone != null) {
+            if (!cleanPhone.matches("^[0-9]{10,15}$")) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số điện thoại phải gồm 10 đến 15 chữ số.");
+            }
+            if (userRepository.existsByPhoneAndUserIdNot(cleanPhone, userId)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Số điện thoại này đã được sử dụng bởi tài khoản khác.");
+            }
+        }
         User targetUser = userRepository.findById(userId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản."));
         String normalizedRole = request.role() == null || request.role().isBlank()
@@ -764,9 +786,19 @@ public class ManagerController {
         if (currentManagerId != null && currentManagerId.equals(userId) && !"MANAGER".equals(normalizedRole)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể tự hạ vai trò của chính mình.");
         }
-        targetUser.setFullName(request.fullName().trim());
-        targetUser.setPhone(request.phone() == null || request.phone().isBlank() ? null : request.phone().trim());
+        targetUser.setFullName(cleanName);
+        targetUser.setPhone(cleanPhone);
         targetUser.setRole(normalizedRole);
+        if ("COACH".equals(normalizedRole)) {
+            if (request.sportIds() != null && !request.sportIds().isEmpty()) {
+                CoachSportHelper.syncCoachSports(targetUser, request.sportIds(), null, domainSportRepository, false);
+            }
+        } else {
+            if (targetUser.getCoachedSports() != null) {
+                targetUser.getCoachedSports().clear();
+            }
+            targetUser.setSpecialty(null);
+        }
         User saved = userRepository.save(targetUser);
         return toUserResponse(saved, loadDomainSports());
     }
@@ -822,20 +854,22 @@ public class ManagerController {
         if ("MANAGER".equalsIgnoreCase(targetUser.getRole()) || "ADMIN".equalsIgnoreCase(targetUser.getRole())) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Không thể xóa tài khoản Quản lý.");
         }
+        String targetLabel = "MEMBER".equalsIgnoreCase(targetUser.getRole()) ? "hội viên" : "nhân sự";
         try {
             userRepository.deleteById(userId);
-            return Map.of("deleted", true, "softDeleted", false, "message", "Đã xóa tài khoản nhân sự.");
+            return Map.of("deleted", true, "softDeleted", false, "message", "Đã xóa tài khoản " + targetLabel + ".");
         } catch (DataIntegrityViolationException ex) {
             targetUser.setStatus("INACTIVE");
             userRepository.save(targetUser);
             return Map.of(
                     "deleted", true,
                     "softDeleted", true,
-                    "message", "Nhân sự đã có dữ liệu lịch sử nên đã được ngừng hoạt động.");
+                    "message", ("MEMBER".equalsIgnoreCase(targetUser.getRole()) ? "Hội viên" : "Nhân sự")
+                            + " đã có dữ liệu lịch sử nên đã được ngừng hoạt động.");
         }
     }
 
     public record PackageStatusRequest(String status) {}
     public record UpdateCoachSportsRequest(List<Long> sportIds, String specialty) {}
-    public record UpdateStaffUserRequest(String fullName, String phone, String role) {}
+    public record UpdateStaffUserRequest(String fullName, String phone, String role, List<Long> sportIds) {}
 }

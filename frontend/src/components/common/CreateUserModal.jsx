@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { createManagerUser, getManagerDomainSports } from '../../services/managerApi';
 import { createReceptionistUser, getReceptionistDomainSports } from '../../services/receptionistApi';
@@ -25,6 +25,32 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess, memberOnly
   const [sports, setSports] = useState([]);
   const [sportsLoading, setSportsLoading] = useState(false);
   const [selectedSportIds, setSelectedSportIds] = useState([]);
+
+  useEffect(() => {
+    if (isOpen) {
+      setRole(defaultRole);
+    }
+  }, [isOpen, defaultRole]);
+
+  useEffect(() => {
+    if (!isOpen || !canSelectRole || role !== 'COACH' || sports.length > 0 || sportsLoading) return;
+    let active = true;
+    setSportsLoading(true);
+    const fetcher = currentRole === 'receptionist' ? getReceptionistDomainSports : getManagerDomainSports;
+    fetcher()
+      .then((rows) => {
+        if (active) setSports(Array.isArray(rows) ? rows : []);
+      })
+      .catch(() => {
+        if (active) setSports([]);
+      })
+      .finally(() => {
+        if (active) setSportsLoading(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [isOpen, canSelectRole, role, sports.length, sportsLoading, currentRole]);
 
   const handleRoleChange = async (nextRole) => {
     if (!canSelectRole) {

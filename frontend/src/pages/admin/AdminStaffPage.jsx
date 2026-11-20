@@ -31,6 +31,13 @@ const STATUS_STYLES = {
   LOCKED: 'bg-red-100 text-red-800',
 };
 
+const STATUS_LABELS = {
+  ACTIVE: 'Đang hoạt động',
+  PENDING: 'Chờ duyệt',
+  INACTIVE: 'Ngừng hoạt động',
+  LOCKED: 'Đã khóa',
+};
+
 const formatDate = (value) => {
   if (!value) return '—';
   return new Intl.DateTimeFormat('vi-VN', {
@@ -71,7 +78,7 @@ export default function AdminStaffPage() {
 
   // Edit / Lock / Delete Staff State
   const [editingStaff, setEditingStaff] = useState(null);
-  const [editForm, setEditForm] = useState({ fullName: '', phone: '', role: 'COACH' });
+  const [editForm, setEditForm] = useState({ fullName: '', phone: '', role: 'COACH', sportIds: [] });
   const [editStaffError, setEditStaffError] = useState('');
   const [savingStaff, setSavingStaff] = useState(false);
   const [deletingStaff, setDeletingStaff] = useState(null);
@@ -163,13 +170,26 @@ export default function AdminStaffPage() {
     }
   }, [page, query, role]);
 
-  const openEditStaff = (user) => {
+  const openEditStaff = async (user) => {
     const normalizedRole = user.role?.toUpperCase() === 'ADMIN' ? 'MANAGER' : user.role?.toUpperCase() || 'COACH';
+    let loadedSports = sports;
+    if (loadedSports.length === 0) {
+      setSportsLoading(true);
+      try {
+        loadedSports = await getManagerDomainSports();
+        setSports(Array.isArray(loadedSports) ? loadedSports : []);
+      } catch {
+        loadedSports = [];
+      } finally {
+        setSportsLoading(false);
+      }
+    }
     setEditingStaff(user);
     setEditForm({
       fullName: user.fullName || '',
       phone: user.phone || '',
       role: normalizedRole,
+      sportIds: normalizedRole === 'COACH' ? resolveCoachSportIds(user, loadedSports) : [],
     });
     setEditStaffError('');
   };
@@ -181,6 +201,10 @@ export default function AdminStaffPage() {
       setEditStaffError('Họ tên không được để trống.');
       return;
     }
+    if (editForm.role === 'COACH' && (!editForm.sportIds || editForm.sportIds.length === 0)) {
+      setEditStaffError('Vui lòng chọn ít nhất một bộ môn giảng dạy cho Huấn luyện viên.');
+      return;
+    }
     setSavingStaff(true);
     setEditStaffError('');
     try {
@@ -188,6 +212,7 @@ export default function AdminStaffPage() {
         fullName: editForm.fullName.trim(),
         phone: editForm.phone.trim(),
         role: editForm.role,
+        sportIds: editForm.role === 'COACH' ? editForm.sportIds.map(Number) : [],
       });
       showToast('Thành công', `Đã cập nhật thông tin cho ${editForm.fullName.trim()}.`, 'success');
       setEditingStaff(null);
@@ -262,7 +287,7 @@ export default function AdminStaffPage() {
             </div>
             <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Quản lý nhân sự</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Danh sách nhân viên và hội viên được tải trực tiếp từ cơ sở dữ liệu F Sport.
+              Danh sách nhân sự được tải trực tiếp từ cơ sở dữ liệu F Sport.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -410,7 +435,7 @@ export default function AdminStaffPage() {
                           <span className={`rounded-full px-3 py-1 text-xs font-bold ${
                             STATUS_STYLES[user.status?.toUpperCase()] || 'bg-slate-100 text-slate-700'
                           }`}>
-                            {user.status || 'Không rõ'}
+                            {STATUS_LABELS[user.status?.toUpperCase()] || user.status || 'Không rõ'}
                           </span>
                         </td>
                         <td className="px-5 py-4 text-slate-600">{formatDate(user.createdAt)}</td>
@@ -438,9 +463,9 @@ export default function AdminStaffPage() {
                               <>
                                 <button
                                   type="button"
-                                  disabled={busyUserId === user.userId}
+                                  disabled={busyUserId === user.userId || !['ACTIVE', 'LOCKED'].includes(user.status?.toUpperCase())}
                                   onClick={() => handleToggleLock(user)}
-                                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
+                                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
                                     user.status?.toUpperCase() === 'LOCKED'
                                       ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
                                       : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
@@ -756,7 +781,11 @@ export default function AdminStaffPage() {
                 <label className="text-xs font-bold text-slate-700">Vai trò</label>
                 <select
                   value={editForm.role}
-                  onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}
+                  onChange={(e) => setEditForm((f) => ({
+                    ...f,
+                    role: e.target.value,
+                    sportIds: e.target.value === 'COACH' ? f.sportIds : [],
+                  }))}
                   className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-orange-500"
                 >
                   <option value="COACH">Huấn luyện viên (COACH)</option>
@@ -764,6 +793,14 @@ export default function AdminStaffPage() {
                   <option value="MANAGER">Quản lý hệ thống (MANAGER)</option>
                 </select>
               </div>
+              {editForm.role === 'COACH' && (
+                <CoachSportSelector
+                  sports={sports}
+                  selectedIds={editForm.sportIds}
+                  onChange={(ids) => setEditForm((f) => ({ ...f, sportIds: ids }))}
+                  loading={sportsLoading}
+                />
+              )}
               <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
                 <button
                   type="button"

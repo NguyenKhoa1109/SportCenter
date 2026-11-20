@@ -81,7 +81,7 @@ export default function AdminLayout({ children, dashboardQuickAction }) {
       path: '/admin/staff',
       icon: 'group',
       section: 'Nhân sự & Hội viên',
-      subtitle: 'Danh sách HLV, lễ tân, tài khoản người dùng',
+      subtitle: 'Danh sách HLV, lễ tân, quản lý và hiệu suất nhân sự',
     },
     {
       label: 'Xử lý Khiếu nại',

@@ -260,7 +260,7 @@ export default function AdminSettingsPage() {
 
   const AUDIT_FILTER_GROUPS = {
     MAINTENANCE: ['MAINTENANCE_CREATED', 'MAINTENANCE_EXTENDED', 'MAINTENANCE_DELETED', 'COURT_STATUS_UPDATED'],
-    REFUND: ['REFUND_DECIDED', 'REFUND_REQUEST_CREATED', 'EXCESS_PAYMENT_REFUND'],
+    REFUND: ['REFUND_DECIDED', 'REFUND_REQUEST_CREATED'],
     COACH_LEAVE: ['COACH_LEAVE_REQUEST_CREATED', 'COACH_LEAVE_REASSIGNED', 'COACH_LEAVE_REJECTED'],
     SUPPORT_TICKET: ['SUPPORT_TICKET_CREATED', 'SUPPORT_TICKET_REPLIED'],
     MEMBERSHIP: ['MEMBERSHIP_APPROVED', 'MEMBERSHIP_REJECTED', 'CREATE_USER_ADMIN_PANEL'],
@@ -506,7 +506,7 @@ export default function AdminSettingsPage() {
                   <tr>
                     <th className="py-3 px-4 border-r border-slate-200">Phân Hệ / Tính Năng</th>
                     <th className="py-3 px-3 text-center border-r border-slate-200 bg-red-50/50 text-red-900">
-                      ADMIN / MANAGER
+                      QUẢN LÝ (MANAGER)
                     </th>
                     <th className="py-3 px-3 text-center border-r border-slate-200 bg-blue-50/50 text-blue-900">
                       LỄ TÂN (RECEPTIONIST)

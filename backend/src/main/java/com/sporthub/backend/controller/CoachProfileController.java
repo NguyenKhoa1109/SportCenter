@@ -121,12 +121,18 @@ public class CoachProfileController {
     @PutMapping("/availability")
     @Transactional
     public ResponseEntity<Map<String, Object>> updateAvailability(
-            @RequestBody Map<String, String> request,
+            @RequestBody(required = false) Map<String, String> request,
             Authentication auth) {
         Long coachId = getActorId(auth);
         User coach = findCoach(coachId);
-        String json = request.get("availabilityJson");
-        coach.setAvailabilityJson(json != null ? json : "{}");
+        String targetJson = (request != null && request.get("availabilityJson") != null)
+                ? request.get("availabilityJson")
+                : "{}";
+        com.sporthub.backend.service.CoachAvailabilityService.validateUpdateAgainstSessions(
+                coach.getAvailabilityJson(),
+                targetJson,
+                classSessionRepository.findByCoachIdOrderByStartTimeAsc(coachId));
+        coach.setAvailabilityJson(targetJson);
         userRepository.save(coach);
         Map<String, Object> res = new LinkedHashMap<>();
         res.put("coachId", coachId);

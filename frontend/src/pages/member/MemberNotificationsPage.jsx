@@ -93,7 +93,14 @@ export default function MemberNotificationsPage() {
     }
     if (item.link) {
       navigate(item.link);
+      return;
     }
+    const type = normalizeNotificationType(item.type);
+    if (type === 'SUPPORT') navigate('/member/tickets');
+    else if (FINANCE_NOTIFICATION_TYPES.has(type)) navigate('/member/transactions');
+    else if (SCHEDULE_NOTIFICATION_TYPES.has(type)) navigate('/member/schedule');
+    else if (COACH_NOTIFICATION_TYPES.has(type)) navigate('/member/workout-plans');
+    else if (MEMBERSHIP_NOTIFICATION_TYPES.has(type)) navigate('/member/packages');
   };
 
   const filteredNotifications = useMemo(() => {

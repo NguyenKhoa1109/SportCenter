@@ -22,7 +22,7 @@ const CATEGORY_OPTIONS = [
   { value: 'COACH_DISPUTE', label: 'Vấn đề Huấn luyện viên' },
   { value: 'FACILITY_ISSUE', label: 'Cơ sở vật chất / Sân bãi' },
   { value: 'SERVICE_QUALITY', label: 'Chất lượng dịch vụ' },
-  { value: 'BILLING_ISSUE', label: 'Sai sót hóa đơn / Thanh toán' },
+  { value: 'PAYMENT_ISSUE', label: 'Hóa đơn / Thanh toán' },
   { value: 'OTHER', label: 'Yêu cầu hỗ trợ khác' },
 ];
 
@@ -68,8 +68,12 @@ export default function MemberTicketsPage() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (!title.trim() || !description.trim()) {
-      showToast('Thiếu thông tin', 'Vui lòng nhập đầy đủ tiêu đề và mô tả chi tiết.', 'error');
+    if (title.trim().length < 5) {
+      showToast('Tiêu đề quá ngắn', 'Tiêu đề khiếu nại cần tối thiểu 5 ký tự.', 'error');
+      return;
+    }
+    if (description.trim().length < 10) {
+      showToast('Mô tả quá ngắn', 'Vui lòng mô tả chi tiết tối thiểu 10 ký tự.', 'error');
       return;
     }
     setSubmitting(true);
@@ -86,6 +90,7 @@ export default function MemberTicketsPage() {
       setDescription('');
       setCategory('SERVICE_QUALITY');
       setSeverity('NORMAL');
+      window.dispatchEvent(new Event('sporthub:notifications-updated'));
       showToast('Gửi khiếu nại thành công', 'Bộ phận CSKH và Quản lý sẽ phản hồi sớm nhất.', 'success');
     } catch (err) {
       showToast('Gửi khiếu nại thất bại', err?.message || 'Không thể gửi khiếu nại lúc này.', 'error');

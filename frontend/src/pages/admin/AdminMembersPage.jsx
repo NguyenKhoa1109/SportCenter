@@ -313,8 +313,8 @@ export default function AdminMembersPage() {
                               <button
                                 type="button"
                                 onClick={() => setDeletingMember(member)}
-                                disabled={isProcessing}
-                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors cursor-pointer disabled:opacity-40"
+                                disabled={isProcessing || status === 'INACTIVE'}
+                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
                                 title="Xóa tài khoản"
                               >
                                 <span className="material-symbols-outlined text-[15px]">delete</span>

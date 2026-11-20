@@ -53,7 +53,11 @@ export default function AdminCreateClassPage() {
   const eligibleCreateCoaches = useMemo(() => {
     if (!sessionForm.sportId) return [];
     const sportName = selectedCreateSport?.sportName || selectedCreateSport?.name || '';
-    return coaches.filter((coach) => coachTeachesSport(coach, sessionForm.sportId, sportName));
+    return coaches.filter(
+      (coach) =>
+        (!coach.status || coach.status.toUpperCase() === 'ACTIVE') &&
+        coachTeachesSport(coach, sessionForm.sportId, sportName),
+    );
   }, [coaches, sessionForm.sportId, selectedCreateSport]);
 
   const handleCreateSession = async (event) => {
@@ -192,7 +196,7 @@ export default function AdminCreateClassPage() {
                 </select>
                 {sessionForm.sportId && eligibleCreateCoaches.length === 0 && (
                   <p className="mt-1.5 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-[11px] font-semibold text-amber-800">
-                    Chưa có HLV nào dạy bộ môn {selectedCreateSport?.sportName || selectedCreateSport?.name}. Vui lòng gán bộ môn cho HLV trong mục Nhân sự &amp; Khách.
+                    Chưa có HLV nào dạy bộ môn {selectedCreateSport?.sportName || selectedCreateSport?.name}. Vui lòng gán bộ môn cho HLV trong mục Quản lý nhân sự.
                   </p>
                 )}
               </label>
