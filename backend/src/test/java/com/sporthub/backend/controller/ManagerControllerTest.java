@@ -28,6 +28,7 @@ import java.util.stream.Collectors;
 import java.math.BigDecimal;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.any;
@@ -139,23 +140,42 @@ class ManagerControllerTest {
                 com.sporthub.backend.enums.MembershipTier.BRONZE);
         var created = controller.createPackage(request, manager);
         assertEquals("Hạng Đồng", created.getName());
-        assertEquals(com.sporthub.backend.enums.MembershipTier.BRONZE, created.getMembershipTier());
+        assertEquals("BRONZE", created.getMembershipTier());
         assertEquals(5, created.getQuotaSessions());
         assertEquals(2, created.getQuotaCourts());
     }
 
     @Test
-    void managerCannotCreateDuplicateActiveTierOrAnUntieredPackage() {
-        var request = new com.sporthub.backend.dto.ManagerPackageRequest(
+    void managerCanCreateCustomTierNameAndRejectsDuplicateActiveTierOrName() {
+        when(packageRepository.save(any(MembershipPackage.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        var customRequest = new com.sporthub.backend.dto.ManagerPackageRequest(
+                "  Hạng Bạch Kim  ", null, new BigDecimal("3500000"), 30, "ALL_DAY", "Custom tier", "ACTIVE", 25, 12,
+                "PLATINUM");
+        var customCreated = controller.createPackage(customRequest, manager);
+        assertEquals("Hạng Bạch Kim", customCreated.getName());
+        assertEquals("PLATINUM", customCreated.getMembershipTier());
+        assertEquals(com.sporthub.backend.enums.PackageType.VIP, customCreated.getPackageType());
+        assertEquals(25, customCreated.getQuotaSessions());
+        assertEquals(12, customCreated.getQuotaCourts());
+
+        var untieredRequest = new com.sporthub.backend.dto.ManagerPackageRequest(
+                "Gói Titan Đặc Biệt", null, new BigDecimal("4200000"), 30, "ALL_DAY", "No preset enum", "ACTIVE", 30, 15);
+        var untieredCreated = controller.createPackage(untieredRequest, manager);
+        assertEquals("Gói Titan Đặc Biệt", untieredCreated.getName());
+        assertNull(untieredCreated.getMembershipTier());
+
+        var silverRequest = new com.sporthub.backend.dto.ManagerPackageRequest(
                 "Hạng Bạc", null, new BigDecimal("800000"), 30, "OFF_PEAK", "", "ACTIVE", 10, 5,
                 com.sporthub.backend.enums.MembershipTier.SILVER);
-        when(packageRepository.existsByMembershipTierAndStatusAndPackageIdNot(
-                com.sporthub.backend.enums.MembershipTier.SILVER, "ACTIVE", -1L)).thenReturn(true);
+        when(packageRepository.existsByMembershipTierIgnoreCaseAndStatusAndPackageIdNot(
+                "SILVER", "ACTIVE", -1L)).thenReturn(true);
         assertEquals(409, assertThrows(ResponseStatusException.class,
-                () -> controller.createPackage(request, manager)).getStatusCode().value());
-        assertEquals(400, assertThrows(ResponseStatusException.class,
-                () -> controller.createPackage(new com.sporthub.backend.dto.ManagerPackageRequest(
-                        "Gói PT lẻ", null, new BigDecimal("100000"), 30, "ALL_DAY", "", "ACTIVE"), manager)).getStatusCode().value());
+                () -> controller.createPackage(silverRequest, manager)).getStatusCode().value());
+
+        when(packageRepository.existsByNameIgnoreCaseAndStatusAndPackageIdNot(
+                "Hạng Bạch Kim", "ACTIVE", -1L)).thenReturn(true);
+        assertEquals(409, assertThrows(ResponseStatusException.class,
+                () -> controller.createPackage(customRequest, manager)).getStatusCode().value());
     }
 
     @Test
@@ -168,7 +188,7 @@ class ManagerControllerTest {
 
         var created = controller.createPackage(request, manager);
 
-        assertEquals("Hạng Vàng", created.getName());
+        assertEquals("Gold Fitness", created.getName());
         assertEquals(new BigDecimal("2500000"), created.getPrice());
         assertEquals(90, created.getDurationDays());
         assertEquals(12, created.getQuotaSessions());
@@ -181,7 +201,7 @@ class ManagerControllerTest {
                 "PEAK", "Updated", "ACTIVE", 20, 8);
         var updated = controller.updatePackage(4L, update, manager);
 
-        assertEquals("Hạng Vàng", updated.getName());
+        assertEquals("Gold Fitness Plus", updated.getName());
         assertEquals("PEAK", updated.getAccessType());
         assertEquals(20, updated.getQuotaSessions());
         assertEquals(8, updated.getQuotaCourts());
@@ -191,6 +211,7 @@ class ManagerControllerTest {
                 "Gold Fitness Legacy", null, new BigDecimal("3000000"), 120,
                 "PEAK", "Updated", "ACTIVE");
         var legacyUpdated = controller.updatePackage(4L, legacyUpdate, manager);
+        assertEquals("Gold Fitness Legacy", legacyUpdated.getName());
         assertEquals(20, legacyUpdated.getQuotaSessions());
         assertEquals(8, legacyUpdated.getQuotaCourts());
 
@@ -198,6 +219,7 @@ class ManagerControllerTest {
                 "Gold Fitness Zero", null, new BigDecimal("3000000"), 120,
                 "PEAK", "Updated", "ACTIVE", 0, 0);
         var resetUpdated = controller.updatePackage(4L, resetZeroUpdate, manager);
+        assertEquals("Gold Fitness Zero", resetUpdated.getName());
         assertEquals(0, resetUpdated.getQuotaSessions());
         assertEquals(0, resetUpdated.getQuotaCourts());
     }
@@ -208,6 +230,10 @@ class ManagerControllerTest {
         assertThrows(ResponseStatusException.class, () -> controller.createPackage(
                 new com.sporthub.backend.dto.ManagerPackageRequest(
                         "", null, new BigDecimal("100"), 30, "ALL_DAY", "", "ACTIVE"),
+                manager));
+        assertThrows(ResponseStatusException.class, () -> controller.createPackage(
+                new com.sporthub.backend.dto.ManagerPackageRequest(
+                        "A".repeat(101), null, new BigDecimal("100"), 30, "ALL_DAY", "", "ACTIVE"),
                 manager));
         assertEquals(400, assertThrows(ResponseStatusException.class, () -> controller.createPackage(
                 new com.sporthub.backend.dto.ManagerPackageRequest(

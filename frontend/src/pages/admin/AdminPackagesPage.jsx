@@ -12,15 +12,15 @@ import { apiRequest } from '../../services/apiClient';
 import { useApp } from '../../context/AppContext';
 
 const EMPTY_FORM = {
-  membershipTier: 'BRONZE',
-  name: 'Hạng Đồng',
+  membershipTier: '',
+  name: '',
   sportId: '',
-  price: '400000',
+  price: '',
   durationDays: '30',
-  accessType: 'OFF_PEAK',
-  quotaSessions: '5',
-  quotaCourts: '2',
-  description: '5 buổi lớp học hoặc PT và 2 giờ sân trong 30 ngày. Áp dụng mọi bộ môn vào 08:00–16:00, theo lịch còn chỗ.',
+  accessType: 'ALL_DAY',
+  quotaSessions: '0',
+  quotaCourts: '0',
+  description: '',
   status: 'ACTIVE',
 };
 
@@ -58,6 +58,7 @@ export default function AdminPackagesPage() {
   const [saving, setSaving] = useState(false);
   const [processingId, setProcessingId] = useState(null);
   const [error, setError] = useState('');
+  const [formError, setFormError] = useState('');
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [editingPackage, setEditingPackage] = useState(null);
   const [form, setForm] = useState(EMPTY_FORM);
@@ -148,7 +149,7 @@ export default function AdminPackagesPage() {
   const openCreateForm = () => {
     setEditingPackage(null);
     setForm(EMPTY_FORM);
-    setError('');
+    setFormError('');
     setIsDrawerOpen(true);
   };
 
@@ -166,28 +167,49 @@ export default function AdminPackagesPage() {
       description: membershipPackage.description || '',
       status: membershipPackage.status || 'ACTIVE',
     });
-    setError('');
+    setFormError('');
     setIsDrawerOpen(true);
   };
 
   const handleSave = async (event) => {
     event.preventDefault();
     setSaving(true);
-    setError('');
+    setFormError('');
+    const trimmedName = form.name.trim();
+    if (!trimmedName || trimmedName.length > 100) {
+      setFormError('Tên hạng hội viên là bắt buộc và tối đa 100 ký tự.');
+      setSaving(false);
+      return;
+    }
+    const price = Number(form.price);
+    if (!Number.isFinite(price) || price <= 0) {
+      setFormError('Giá niêm yết phải lớn hơn 0.');
+      setSaving(false);
+      return;
+    }
+    const durationDays = Number(form.durationDays);
+    if (!Number.isInteger(durationDays) || durationDays <= 0) {
+      setFormError('Thời hạn phải là số nguyên lớn hơn 0 ngày.');
+      setSaving(false);
+      return;
+    }
     const quotaSessions = form.quotaSessions === '' ? 0 : Number(form.quotaSessions);
     const quotaCourts = form.quotaCourts === '' ? 0 : Number(form.quotaCourts);
     if (!Number.isInteger(quotaSessions) || quotaSessions < 0 || !Number.isInteger(quotaCourts) || quotaCourts < 0) {
-      setError('Số buổi tập và số giờ sân phải là số nguyên không âm.');
+      setFormError('Số buổi tập và số giờ sân phải là số nguyên không âm.');
       setSaving(false);
       return;
     }
 
+    const normalizedTier = form.membershipTier?.trim() || '';
+    const isPresetTier = ['BRONZE', 'SILVER', 'GOLD', 'DIAMOND'].includes(normalizedTier.toUpperCase());
+
     const payload = {
-      membershipTier: form.membershipTier || null,
-      name: form.name.trim(),
+      membershipTier: isPresetTier ? normalizedTier.toUpperCase() : trimmedName,
+      name: trimmedName,
       sportId: form.sportId ? Number(form.sportId) : null,
-      price: Number(form.price),
-      durationDays: Number(form.durationDays),
+      price,
+      durationDays,
       accessType: form.accessType,
       quotaSessions,
       quotaCourts,
@@ -205,7 +227,7 @@ export default function AdminPackagesPage() {
       await loadData();
       showToast('Thành công', 'Đã lưu cấu hình gói thành viên (Ghi Audit Log).', 'success');
     } catch (requestError) {
-      setError(requestError.message || 'Không thể lưu gói tập.');
+      setFormError(requestError.message || 'Không thể lưu gói tập.');
     } finally {
       setSaving(false);
     }
@@ -313,7 +335,7 @@ export default function AdminPackagesPage() {
             </div>
             <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Hạng Hội Viên &amp; Quyền Lợi</h1>
             <p className="mt-1 text-sm text-slate-500">
-              Quản lý hạng Đồng, Bạc, Vàng, Kim Cương và mã ưu đãi.
+              Quản lý các hạng hội viên, quyền lợi và mã ưu đãi.
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -352,7 +374,7 @@ export default function AdminPackagesPage() {
         {/* Navigation Tabs */}
         <div className="flex items-center gap-2 border-b border-slate-200 pb-2 overflow-x-auto">
           {[
-            { id: 'packages', label: `Hạng hội viên (${packages.filter((pkg) => pkg.membershipTier).length})`, icon: 'card_membership' },
+            { id: 'packages', label: `Hạng hội viên (${packages.length})`, icon: 'card_membership' },
             { id: 'vouchers', label: `Mã giảm giá & Voucher (${vouchers.length})`, icon: 'loyalty' },
           ].map((tab) => (
             <button
@@ -637,21 +659,30 @@ export default function AdminPackagesPage() {
             </div>
 
             <form onSubmit={handleSave} className="mt-6 space-y-4">
-              {error && (
-                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-600 font-semibold">
-                  {error}
+              {formError && (
+                <div role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-xs text-red-600 font-semibold">
+                  {formError}
                 </div>
               )}
               <div>
-                <label htmlFor="packageTier" className="block text-xs font-bold uppercase text-slate-700">Hạng hội viên *</label>
-                <select id="packageTier" aria-label="Hạng hội viên" required value={form.membershipTier}
-                  onChange={(event) => setForm({ ...form, membershipTier: event.target.value,
-                    name: { BRONZE: 'Hạng Đồng', SILVER: 'Hạng Bạc', GOLD: 'Hạng Vàng', DIAMOND: 'Hạng Kim Cương' }[event.target.value], sportId: '' })}
-                  className="mt-1 w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold">
-                  <option value="">Gói cũ lưu lịch sử</option>
-                  <option value="BRONZE">Đồng</option><option value="SILVER">Bạc</option><option value="GOLD">Vàng</option><option value="DIAMOND">Kim Cương</option>
-                </select>
-                <p className="mt-2 text-xs text-slate-500">Áp dụng mọi bộ môn. Thứ tự: Đồng → Bạc → Vàng → Kim Cương. Mỗi hạng chỉ có một cấu hình đang mở bán; gói cũ được giữ để tra cứu.</p>
+                <label htmlFor="packageName" className="block text-xs font-bold uppercase text-slate-700">
+                  Tên hạng hội viên *
+                </label>
+                <input
+                  id="packageName"
+                  name="name"
+                  type="text"
+                  required
+                  maxLength={100}
+                  aria-label="Tên hạng hội viên"
+                  value={form.name}
+                  onChange={(event) => setForm({ ...form, name: event.target.value })}
+                  placeholder="Ví dụ: Hạng Bạch Kim, Hạng Đồng, Gói VIP..."
+                  className="mt-1 w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold outline-none focus:border-orange-500"
+                />
+                <p className="mt-2 text-xs text-slate-500">
+                  Nhập tên hạng hội viên tùy ý (tối đa 100 ký tự). Áp dụng mọi bộ môn theo khung giờ và quyền lợi đã cấu hình.
+                </p>
               </div>
 
               <div className="grid grid-cols-2 gap-4">
@@ -660,7 +691,7 @@ export default function AdminPackagesPage() {
                   <input
                     type="number"
                     required
-                    min={0}
+                    min={1}
                     id="packagePrice"
                     name="price"
                     aria-label="Giá niêm yết"

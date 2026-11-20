@@ -15,9 +15,8 @@ public class MembershipPackage {
     @Column(name = "package_id")
     private Long packageId;
 
-    @Enumerated(EnumType.STRING)
-    @Column(name = "membership_tier", length = 20)
-    private com.sporthub.backend.enums.MembershipTier membershipTier;
+    @Column(name = "membership_tier", length = 100)
+    private String membershipTier;
 
     @Column(nullable = false, length = 100)
     private String name;

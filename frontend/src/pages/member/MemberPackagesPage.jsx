@@ -8,7 +8,7 @@ import { getMemberMemberships, purchaseMembership } from '../../services/memberA
 import { redirectToPayment } from '../../services/paymentNavigation';
 import PaymentMethodSelector from '../../components/common/PaymentMethodSelector';
 import ActiveMemberPackages from '../../components/common/ActiveMemberPackages';
-import { getActiveMemberships } from '../../utils/memberMemberships';
+import { getActiveMemberships, getTierBadgeStyle } from '../../utils/memberMemberships';
 
 const formatMoney = (amount) =>
   new Intl.NumberFormat('vi-VN', {
@@ -74,7 +74,10 @@ export default function MemberPackagesPage() {
   const activeMemberships = getActiveMemberships(memberships);
   const tierRank = { BRONZE: 1, SILVER: 2, GOLD: 3, DIAMOND: 4 };
   const currentTierRank = Math.max(0, ...activeMemberships.map((membership) => tierRank[membership.membershipTier] || 0));
-  const sortedPackages = [...packages].sort((a, b) => (tierRank[a.membershipTier] || 99) - (tierRank[b.membershipTier] || 99));
+  const sortedPackages = [...packages].sort((a, b) =>
+    (tierRank[a.membershipTier] || 99) - (tierRank[b.membershipTier] || 99)
+    || Number(a.price || 0) - Number(b.price || 0)
+  );
 
   const handleOpenCheckout = (pkg, type) => {
     if (pendingMemberships.some((m) => m.packageId === pkg.packageId)) return;
@@ -267,8 +270,9 @@ export default function MemberPackagesPage() {
                 const pending = pendingMemberships.find((m) => m.packageId === pkg.packageId);
                 const pkgPrice = Number(pkg.price || 0);
                 const isCurrent = activeMemberships.some((membership) => membership.packageId === pkg.packageId);
-                const isLower = !isCurrent && (tierRank[pkg.membershipTier] || 0) < currentTierRank;
-                const isHigher = currentTierRank > 0 && !isCurrent && (tierRank[pkg.membershipTier] || 0) > currentTierRank;
+                const pkgTierRank = tierRank[pkg.membershipTier] || 0;
+                const isLower = !isCurrent && pkgTierRank > 0 && currentTierRank > 0 && pkgTierRank < currentTierRank;
+                const isHigher = !isCurrent && pkgTierRank > 0 && currentTierRank > 0 && pkgTierRank > currentTierRank;
 
                 return (
                   <div
@@ -283,6 +287,11 @@ export default function MemberPackagesPage() {
                   >
                     <div>
                       <div className="mb-4 flex min-h-7 flex-wrap items-center gap-2">
+                        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${getTierBadgeStyle(pkg.membershipTier || pkg.name, 'light')}`}>
+                          {['BRONZE', 'SILVER', 'GOLD', 'DIAMOND'].includes(String(pkg.membershipTier || '').toUpperCase())
+                            ? 'Hạng tiêu chuẩn'
+                            : 'Hạng tùy chỉnh'}
+                        </span>
                         {pending ? (
                           <span className="rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-800">Đang chờ xử lý</span>
                         ) : isCurrent ? (

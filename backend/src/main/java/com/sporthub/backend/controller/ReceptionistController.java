@@ -887,22 +887,12 @@ public class ReceptionistController {
                         && m.getEndDate() != null && !m.getEndDate().isBefore(today))
                 .toList();
 
-        String tier = "MEMBER";
-        com.sporthub.backend.enums.MembershipTier highestTier = null;
+        List<MembershipPackage> resolvedPackages = new ArrayList<>();
         List<Map<String, Object>> activePackages = new ArrayList<>();
         for (UserMembership m : activeList) {
             MembershipPackage pkg = packageRepository.findById(m.getPackageId()).orElse(null);
             String pkgName = pkg != null ? pkg.getName() : "Gói tập";
-            if (pkg != null && pkg.getMembershipTier() != null
-                    && (highestTier == null || pkg.getMembershipTier().ordinal() > highestTier.ordinal())) {
-                highestTier = pkg.getMembershipTier();
-            }
-            if (pkgName.toUpperCase(Locale.ROOT).contains("VIP") || pkgName.toUpperCase(Locale.ROOT).contains("DIAMOND")
-                    || (pkg != null && "ALL_ACCESS".equalsIgnoreCase(pkg.getAccessType()))) {
-                tier = "VIP";
-            } else if ("MEMBER".equals(tier)) {
-                tier = "STANDARD";
-            }
+            if (pkg != null) resolvedPackages.add(pkg);
             long daysLeft = m.getEndDate() != null ? Math.max(0, java.time.temporal.ChronoUnit.DAYS.between(today, m.getEndDate()) + 1) : 0;
             Map<String, Object> row = new LinkedHashMap<>();
             row.put("membershipId", m.getMembershipId());
@@ -960,9 +950,10 @@ public class ReceptionistController {
                 }
             }
         }
-        String tierBadge = highestTier != null ? highestTier.getDisplayName().toUpperCase(Locale.ROOT)
-                : "VIP".equals(tier) ? "HỘI VIÊN VIP" : "STANDARD".equals(tier) ? "HỘI VIÊN STANDARD" : "HỘI VIÊN MỚI";
-        if (highestTier != null) tier = highestTier.name();
+        var tierDisplay = com.sporthub.backend.enums.MembershipTier.resolveDisplay(
+                resolvedPackages, "MEMBER", "HỘI VIÊN MỚI");
+        String tier = tierDisplay.tier();
+        String tierBadge = tierDisplay.tierBadge();
         Map<String, Object> result = new LinkedHashMap<>();
         result.put("userId", user.getUserId());
         result.put("fullName", user.getFullName());

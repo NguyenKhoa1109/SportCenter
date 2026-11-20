@@ -223,7 +223,10 @@ public class MembershipService {
         if (start == null && end == null) return true;
         MembershipPackage pkg = membershipPackageRepository.findById(membership.getPackageId()).orElse(null);
         if (pkg == null) return false;
-        if (pkg.getMembershipTier() == null) return true;
+        if (pkg.getMembershipTier() == null && (membership.getStartDate() == null || membership.getEndDate() == null
+                || !List.of("ALL_DAY", "PEAK", "OFF_PEAK").contains(pkg.getAccessType()))) {
+            return true;
+        }
         return MembershipAccessRules.permits(pkg.getAccessType(), start, end)
                 && !start.toLocalDate().isBefore(membership.getStartDate())
                 && !end.toLocalDate().isAfter(membership.getEndDate());
@@ -234,11 +237,14 @@ public class MembershipService {
         UserMembership membership = userMembershipRepository.findById(membershipId)
                 .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy gói đã mua."));
         MembershipPackage pkg = membershipPackageRepository.findById(membership.getPackageId()).orElseThrow();
-        // Historical contracts retain their existing rules; the tier catalog has explicit access windows.
-        if (pkg.getMembershipTier() == null) return;
+        // Historical non-window contracts (e.g. legacy PT) retain their existing rules.
+        if (pkg.getMembershipTier() == null
+                && !List.of("ALL_DAY", "PEAK", "OFF_PEAK").contains(pkg.getAccessType())) return;
         if (!MembershipAccessRules.permits(pkg.getAccessType(), start, end)) {
+            String windowHint = "OFF_PEAK".equals(pkg.getAccessType()) ? "08:00–16:00"
+                    : "PEAK".equals(pkg.getAccessType()) ? "17:00–21:00" : "khung giờ quy định";
             throw new ResponseStatusException(HttpStatus.CONFLICT,
-                    "Lịch ngoài khung giờ của hạng hội viên. Hạng Đồng và Bạc áp dụng 08:00–16:00; chọn lịch phù hợp hoặc thanh toán lẻ.");
+                    "Lịch ngoài khung giờ của hạng hội viên (áp dụng " + windowHint + "); chọn lịch phù hợp hoặc thanh toán lẻ.");
         }
         if (membership.getStartDate() == null || membership.getEndDate() == null
                 || start.toLocalDate().isBefore(membership.getStartDate()) || end.toLocalDate().isAfter(membership.getEndDate())) {
@@ -253,8 +259,13 @@ public class MembershipService {
     }
 
     private boolean sameRenewalGroup(MembershipPackage a, MembershipPackage b) {
-        if (b != null && (a.getMembershipTier() != null || b.getMembershipTier() != null)) {
-            return a.getMembershipTier() != null && a.getMembershipTier() == b.getMembershipTier();
+        String tierA = com.sporthub.backend.enums.MembershipTier.normalize(a.getMembershipTier());
+        String tierB = b == null ? null : com.sporthub.backend.enums.MembershipTier.normalize(b.getMembershipTier());
+        if (b != null && (tierA != null || tierB != null)) {
+            return tierA != null && tierA.equalsIgnoreCase(tierB);
+        }
+        if (b != null && a.getPackageId() != null && b.getPackageId() != null) {
+            return java.util.Objects.equals(a.getPackageId(), b.getPackageId());
         }
         return b != null && a.getPackageType() == b.getPackageType()
             && (a.getPackageType() == com.sporthub.backend.enums.PackageType.VIP || java.util.Objects.equals(a.getSportId(), b.getSportId()));

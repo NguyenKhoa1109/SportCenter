@@ -11,5 +11,5 @@ public record MemberMembershipResponse(
         Long packageId,
         Long paymentId,
         String paymentMethod,
-        com.sporthub.backend.enums.MembershipTier membershipTier) {
+        String membershipTier) {
 }

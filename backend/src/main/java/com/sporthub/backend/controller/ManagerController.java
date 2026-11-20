@@ -185,9 +185,6 @@ public class ManagerController {
         requireManager(authentication);
         validatePackage(request);
         MembershipPackage membershipPackage = new MembershipPackage();
-        if (request.membershipTier() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ tạo hạng Đồng, Bạc, Vàng hoặc Kim Cương.");
-        }
         applyPackageRequest(membershipPackage, request);
         validateTierAvailability(membershipPackage);
         return packageRepository.save(membershipPackage);
@@ -531,6 +528,10 @@ public class ManagerController {
             throw new ResponseStatusException(
                     HttpStatus.BAD_REQUEST, "Tên gói tập là bắt buộc và tối đa 100 ký tự.");
         }
+        if (request.membershipTier() != null && request.membershipTier().trim().length() > 100) {
+            throw new ResponseStatusException(
+                    HttpStatus.BAD_REQUEST, "Mã hạng hội viên tối đa 100 ký tự.");
+        }
         if (request.price() == null || request.price().signum() <= 0
                 || request.price().scale() > 2 || request.price().precision() > 10) {
             throw new ResponseStatusException(
@@ -561,24 +562,28 @@ public class ManagerController {
 
     private void validateTierAvailability(MembershipPackage membershipPackage) {
         if (!"ACTIVE".equals(membershipPackage.getStatus())) return;
-        if (membershipPackage.getMembershipTier() == null) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Gói cũ chỉ lưu lịch sử. Chọn hạng Đồng, Bạc, Vàng hoặc Kim Cương để mở bán.");
-        }
-        if (packageRepository.existsByMembershipTierAndStatusAndPackageIdNot(
-                membershipPackage.getMembershipTier(), "ACTIVE",
-                membershipPackage.getPackageId() == null ? -1L : membershipPackage.getPackageId())) {
+        long excludeId = membershipPackage.getPackageId() == null ? -1L : membershipPackage.getPackageId();
+        if (membershipPackage.getMembershipTier() != null && !membershipPackage.getMembershipTier().isBlank()
+                && packageRepository.existsByMembershipTierIgnoreCaseAndStatusAndPackageIdNot(
+                        membershipPackage.getMembershipTier(), "ACTIVE", excludeId)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Hạng này đã mở bán. Hãy cập nhật cấu hình hiện có.");
+        }
+        if (packageRepository.existsByNameIgnoreCaseAndStatusAndPackageIdNot(
+                membershipPackage.getName(), "ACTIVE", excludeId)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tên hạng hội viên này đã mở bán. Vui lòng chọn tên khác hoặc cập nhật gói hiện có.");
         }
     }
 
     private void applyPackageRequest(MembershipPackage membershipPackage, ManagerPackageRequest request) {
-        if (request.membershipTier() != null) membershipPackage.setMembershipTier(request.membershipTier());
-        membershipPackage.setName(membershipPackage.getMembershipTier() == null
-                ? request.name().trim() : membershipPackage.getMembershipTier().getDisplayName());
-        if (membershipPackage.getMembershipTier() != null) {
+        if (request.membershipTier() != null) {
+            membershipPackage.setMembershipTier(com.sporthub.backend.enums.MembershipTier.normalize(request.membershipTier()));
+        }
+        membershipPackage.setName(request.name().trim());
+        boolean presetTier = com.sporthub.backend.enums.MembershipTier.fromString(membershipPackage.getMembershipTier()).isPresent();
+        if (membershipPackage.getPackageType() == null || presetTier) {
             membershipPackage.setPackageType(com.sporthub.backend.enums.PackageType.VIP);
         }
-        membershipPackage.setSportId(membershipPackage.getMembershipTier() == null ? request.sportId() : null);
+        membershipPackage.setSportId(presetTier ? null : request.sportId());
         membershipPackage.setPrice(request.price());
         membershipPackage.setDurationDays(request.durationDays());
         membershipPackage.setAccessType(request.accessType().trim().toUpperCase(Locale.ROOT));

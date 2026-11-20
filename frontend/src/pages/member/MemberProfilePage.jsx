@@ -15,7 +15,7 @@ import {
 import { compressImageFile } from '../../utils/imageCompressor';
 import { getAvatarImageUrl, getAvatarInitials } from '../../utils/avatarHelper';
 import ActiveMemberPackages from '../../components/common/ActiveMemberPackages';
-import { getActiveMemberships } from '../../utils/memberMemberships';
+import { getActiveMemberships, getTierBadgeStyle } from '../../utils/memberMemberships';
 
 export default function MemberProfilePage() {
   const { currentUser, updateProfile, showToast } = useApp();
@@ -249,7 +249,7 @@ export default function MemberProfilePage() {
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-xs transition-all shadow-sm shadow-orange-500/20 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">upgrade</span>
-              <span>Nâng cấp hạng Vàng / Kim Cương</span>
+              <span>Khám phá / Nâng cấp hạng hội viên</span>
             </Link>
           </div>
         </div>
@@ -303,11 +303,10 @@ export default function MemberProfilePage() {
                   </div>
                 </div>
                 <span className={`px-3 py-1 rounded-full border text-[10px] font-black uppercase tracking-wider ${
-                  digitalCard?.tier === 'VIP'
-                    ? 'bg-amber-500/20 border-amber-400/50 text-amber-300'
-                    : digitalCard?.tier === 'STANDARD'
-                    ? 'bg-emerald-500/20 border-emerald-400/50 text-emerald-300'
-                    : 'bg-slate-800/90 border-slate-700 text-orange-400'
+                  getTierBadgeStyle(
+                    digitalCard?.tier || digitalCard?.tierBadge || (activeMemberships.length ? 'STANDARD' : 'BASIC'),
+                    'dark',
+                  )
                 }`}>
                   {digitalCard?.tierBadge || (activeMemberships.length ? 'HỘI VIÊN STANDARD' : 'HỘI VIÊN CHÍNH THỨC')}
                 </span>

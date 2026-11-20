@@ -222,12 +222,11 @@ CREATE TABLE dbo.membership_packages (
     access_type     VARCHAR(20)   NOT NULL CONSTRAINT DF_membership_packages_access_type DEFAULT 'ALL_DAY',
     description     NVARCHAR(MAX) NULL,
     status          VARCHAR(20)   NOT NULL CONSTRAINT DF_membership_packages_status DEFAULT 'ACTIVE',
-    membership_tier NVARCHAR(20) NULL,
+    membership_tier NVARCHAR(100) NULL,
     package_type    NVARCHAR(20)  NULL CONSTRAINT DF_packages_package_type DEFAULT 'VIP',
     quota_sessions  INT           NULL CONSTRAINT DF_packages_quota_sessions DEFAULT 0,
     quota_courts    INT           NULL CONSTRAINT DF_packages_quota_courts DEFAULT 0,
     CONSTRAINT FK_membership_packages_sports FOREIGN KEY (sport_id) REFERENCES dbo.sports(sport_id),
-    CONSTRAINT CK_membership_packages_tier CHECK (membership_tier IS NULL OR membership_tier IN ('BRONZE', 'SILVER', 'GOLD', 'DIAMOND')),
     CONSTRAINT CK_membership_packages_access_type CHECK (access_type IN ('ALL_DAY', 'PEAK', 'OFF_PEAK')),
     CONSTRAINT CK_membership_packages_status CHECK (status IN ('ACTIVE', 'INACTIVE'))
 );

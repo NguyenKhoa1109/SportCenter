@@ -357,19 +357,12 @@ public class MemberProfileController {
                 .toList();
 
         List<Map<String, Object>> activePackageList = new ArrayList<>();
-        boolean isVip = false;
-        com.sporthub.backend.enums.MembershipTier highestTier = null;
+        List<MembershipPackage> resolvedPackages = new ArrayList<>();
 
         for (UserMembership m : activeMemberships) {
             MembershipPackage pkg = packageRepository.findById(m.getPackageId()).orElse(null);
             String pkgName = pkg != null ? pkg.getName() : "Gói tập";
-            if (pkg != null && pkg.getMembershipTier() != null
-                    && (highestTier == null || pkg.getMembershipTier().ordinal() > highestTier.ordinal())) {
-                highestTier = pkg.getMembershipTier();
-            }
-            if (pkg != null && pkg.getPackageType() == com.sporthub.backend.enums.PackageType.VIP) {
-                isVip = true;
-            }
+            if (pkg != null) resolvedPackages.add(pkg);
             long remainingDays = m.getEndDate() != null ? Math.max(0, ChronoUnit.DAYS.between(LocalDate.now(), m.getEndDate())) : 30;
 
             Map<String, Object> item = new LinkedHashMap<>();
@@ -381,21 +374,10 @@ public class MemberProfileController {
             activePackageList.add(item);
         }
 
-        String tier;
-        String tierBadge;
-        if (highestTier != null) {
-            tier = highestTier.name();
-            tierBadge = highestTier.getDisplayName().toUpperCase(java.util.Locale.ROOT);
-        } else if (isVip) {
-            tier = "VIP";
-            tierBadge = "HỘI VIÊN VIP";
-        } else if (!activePackageList.isEmpty()) {
-            tier = "STANDARD";
-            tierBadge = "HỘI VIÊN STANDARD";
-        } else {
-            tier = "BASIC";
-            tierBadge = "HỘI VIÊN CHÍNH THỨC";
-        }
+        var tierDisplay = com.sporthub.backend.enums.MembershipTier.resolveDisplay(
+                resolvedPackages, "BASIC", "HỘI VIÊN CHÍNH THỨC");
+        String tier = tierDisplay.tier();
+        String tierBadge = tierDisplay.tierBadge();
 
         LocalDate today = LocalDate.now();
         List<Booking> memberBookings = bookingRepository.findByMemberId(userId);
@@ -669,7 +651,7 @@ public class MemberProfileController {
                     "pkg-none",
                     "MEMBERSHIP_EXPIRY",
                     "Khám phá các gói hội viên F Sport",
-                    "Bạn chưa kích hoạt gói tập nào. Hãy chọn hạng Đồng, Bạc, Vàng hoặc Kim Cương để bắt đầu sử dụng quyền lợi hội viên.",
+                    "Bạn chưa kích hoạt gói tập nào. Hãy chọn một hạng hội viên phù hợp để bắt đầu sử dụng quyền lợi hội viên.",
                     LocalDateTime.now().minusHours(12),
                     false,
                     "/member/packages"));

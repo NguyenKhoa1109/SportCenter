@@ -944,7 +944,7 @@ IF OBJECT_ID(N'dbo.users', N'U') IS NOT NULL
 -- ===== Bo sung: membership_packages.package_type, quota_sessions, quota_courts =====
 IF OBJECT_ID(N'dbo.membership_packages', N'U') IS NOT NULL
    AND COL_LENGTH(N'dbo.membership_packages', N'membership_tier') IS NULL
-    ALTER TABLE dbo.membership_packages ADD membership_tier NVARCHAR(20) NULL;
+    ALTER TABLE dbo.membership_packages ADD membership_tier NVARCHAR(100) NULL;
 
 IF OBJECT_ID(N'dbo.membership_packages', N'U') IS NOT NULL
    AND COL_LENGTH(N'dbo.membership_packages', N'package_type') IS NULL

@@ -5,6 +5,7 @@ import Navbar from '../components/Navbar';
 import { useApp } from '../context/AppContext';
 import { apiRequest } from '../services/apiClient';
 import { getPublicPackages } from '../services/publicContentApi';
+import { getTierBadgeStyle } from '../utils/memberMemberships';
 
 const formatPrice = (price) => new Intl.NumberFormat('vi-VN', {
   style: 'currency',
@@ -176,9 +177,16 @@ export default function PricingPage() {
                     <div className="space-y-6">
                       {/* Huy hiệu thời gian truy cập */}
                       <div>
-                        <span className={`inline-block px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border ${badgeInfo.color}`}>
-                          {badgeInfo.label}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className={`inline-block px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider border ${badgeInfo.color}`}>
+                            {badgeInfo.label}
+                          </span>
+                          <span className={`inline-block px-3 py-1 rounded-md text-[10px] font-black uppercase tracking-wider ${getTierBadgeStyle(pkg.membershipTier || pkg.name, isFeatured ? 'dark' : 'light')}`}>
+                            {pkg.membershipTier && !['BRONZE', 'SILVER', 'GOLD', 'DIAMOND'].includes(String(pkg.membershipTier).toUpperCase())
+                              ? 'Hạng đặc biệt'
+                              : pkg.membershipTier || 'Hạng hội viên'}
+                          </span>
+                        </div>
                         <h2 className={`mt-3 text-xl sm:text-2xl font-black uppercase tracking-normal leading-snug ${isFeatured ? 'text-white' : 'text-slate-900'}`}>
                           {pkg.name}
                         </h2>

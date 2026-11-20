@@ -21,10 +21,6 @@ BEGIN
         (N'Hạng Kim Cương', NULL, 2800000, 30, 'ALL_DAY', N'30 buổi lớp học hoặc PT và 15 giờ sân trong 30 ngày. Áp dụng mọi bộ môn trong giờ hoạt động, theo lịch còn chỗ.', 'ACTIVE', 'VIP', 30, 15, 'DIAMOND')
 END;
 
-IF NOT EXISTS (SELECT 1 FROM sys.check_constraints WHERE name = 'CK_membership_packages_tier')
-    ALTER TABLE dbo.membership_packages ADD CONSTRAINT CK_membership_packages_tier
-        CHECK (membership_tier IS NULL OR membership_tier IN ('SILVER', 'GOLD', 'DIAMOND'));
-
 IF NOT EXISTS (SELECT 1 FROM sys.indexes WHERE name = 'UX_membership_packages_active_tier' AND object_id = OBJECT_ID(N'dbo.membership_packages'))
     CREATE UNIQUE INDEX UX_membership_packages_active_tier ON dbo.membership_packages(membership_tier)
         WHERE status = 'ACTIVE' AND membership_tier IS NOT NULL;

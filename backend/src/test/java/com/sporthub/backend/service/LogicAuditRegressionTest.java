@@ -28,9 +28,9 @@ class LogicAuditRegressionTest {
         var gold = membership(); gold.setMembershipId(3L); gold.setPackageId(4L);
         when(repo.findByUserIdAndStatus(9L, "ACTIVE")).thenReturn(List.of(silver, gold));
         when(packages.findById(2L)).thenReturn(Optional.of(MembershipPackage.builder()
-                .packageType(PackageType.VIP).membershipTier(com.sporthub.backend.enums.MembershipTier.SILVER).accessType("OFF_PEAK").build()));
+                .packageType(PackageType.VIP).membershipTier("SILVER").accessType("OFF_PEAK").build()));
         when(packages.findById(4L)).thenReturn(Optional.of(MembershipPackage.builder()
-                .packageType(PackageType.VIP).membershipTier(com.sporthub.backend.enums.MembershipTier.GOLD).accessType("ALL_DAY").build()));
+                .packageType(PackageType.VIP).membershipTier("GOLD").accessType("ALL_DAY").build()));
         var service = new MembershipService(repo, packages, null, null, null);
         var start = LocalDate.now().atTime(18, 0);
         assertSame(gold, service.getActiveMembershipWithQuota(9L, 1, "CLASS", null, start, start.plusHours(1)));

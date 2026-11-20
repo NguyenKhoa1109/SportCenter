@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { getActiveMemberships, membershipDaysRemaining } from './memberMemberships.js';
+import { getActiveMemberships, getTierBadgeStyle, membershipDaysRemaining } from './memberMemberships.js';
 
 const now = new Date(2026, 10, 19, 23, 30);
 const membership = (id, changes = {}) => ({
@@ -26,4 +26,14 @@ test('counts calendar days consistently without parsing date-only strings as UTC
   assert.equal(membershipDaysRemaining('2026-11-20', now), 1);
   assert.equal(membershipDaysRemaining('2026-12-01', now), 12);
   assert.equal(membershipDaysRemaining('2026-11-18', now), 0);
+});
+
+test('resolves preset and deterministic fallback badge styles for custom tier names', () => {
+  assert.match(getTierBadgeStyle('GOLD', 'light'), /amber/);
+  assert.match(getTierBadgeStyle('DIAMOND', 'dark'), /sky/);
+  assert.match(getTierBadgeStyle('BASIC', 'light'), /slate-200/);
+  const customStyle = getTierBadgeStyle('Hạng Bạch Kim', 'light');
+  assert.ok(customStyle.length > 0);
+  assert.equal(customStyle, getTierBadgeStyle('Hạng Bạch Kim', 'light'));
+  assert.notEqual(customStyle, getTierBadgeStyle('BASIC', 'light'));
 });

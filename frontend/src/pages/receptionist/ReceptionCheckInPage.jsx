@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import ReceptionistLayout from '../../components/layouts/ReceptionistLayout';
 import { apiRequest } from '../../services/apiClient';
 import { checkInReceptionMember, lookupReceptionCard } from '../../services/receptionistApi';
+import { getTierBadgeStyle } from '../../utils/memberMemberships';
 
 const formatDateTime = (value) => new Date(value).toLocaleString('vi-VN', {
   dateStyle: 'short',
@@ -311,11 +312,7 @@ export default function ReceptionCheckInPage() {
                 </div>
                 <div className="mt-3">
                   <span className={`px-3 py-1 rounded-full text-xs font-black uppercase tracking-wider ${
-                    cardProfile.tier === 'VIP'
-                      ? 'bg-amber-100 text-amber-900 border border-amber-300'
-                      : cardProfile.tier === 'STANDARD'
-                      ? 'bg-emerald-100 text-emerald-900 border border-emerald-300'
-                      : 'bg-slate-200 text-slate-800'
+                    getTierBadgeStyle(cardProfile.tier || cardProfile.tierBadge, 'light')
                   }`}>
                     {cardProfile.tierBadge || 'HỘI VIÊN CHÍNH THỨC'}
                   </span>
