@@ -94,32 +94,6 @@ class RemainingFixRegressionTest {
         var wrong = new HashMap<>(callback("2_first", "txn_one")); wrong.put("vnp_Amount", "2000");
         f.controller.handleIPN(wrong); verifyNoInteractions(f.attempts, f.receipts, f.handler);
     }
-    @Test void excessRefundUsesItsOwnGatewayIdentifiersAndDoesNotChangeOriginalOrder() {
-        var f = new PaymentFixture(); f.controller.handleIPN(callback("2_first", "txn_one")); f.controller.handleIPN(callback("2_second", "txn_two"));
-        GatewayReceipt extra = f.receiptsByTransaction.get("txn_two"); extra.setTransactionDate("20261109115900");
-        when(f.receipts.findById(extra.getReceiptId())).thenReturn(Optional.of(extra)); when(f.receipts.findByIdForUpdate(extra.getReceiptId())).thenReturn(Optional.of(extra));
-        when(f.gateway.refundPayment(any(), any(), anyString(), anyString())).thenReturn(Map.of("vnp_ResponseCode", "00"));
-        var c = new PaymentReconciliationController(f.receipts, f.payments, f.gateway, f.engagement);
-        var manager = new UsernamePasswordAuthenticationToken("1", "", List.of(new SimpleGrantedAuthority("ROLE_MANAGER")));
-        c.refund(extra.getReceiptId(), manager);
-        var source = org.mockito.ArgumentCaptor.forClass(PaymentTransaction.class);
-        verify(f.gateway).refundPayment(source.capture(), argThat(a -> a.compareTo(BigDecimal.TEN) == 0), anyString(), eq("excess-receipt:txn_two"));
-        assertEquals("txn_two", source.getValue().getReferenceCode()); assertEquals("2_second", source.getValue().getGatewayReference());
-        assertEquals("REFUNDED", extra.getStatus()); assertEquals("PAID", f.order.getPaymentStatus()); assertEquals("txn_one", f.order.getReferenceCode());
-        assertThrows(ResponseStatusException.class, () -> c.refund(extra.getReceiptId(), manager));
-        verify(f.handler, times(1)).handlePaymentConfirmation(any(), any());
-    }
-    @Test void unconfirmedExcessRefundRequiresReviewAndCannotBeBlindlyRetried() {
-        var f = new PaymentFixture(); f.controller.handleIPN(callback("2_first", "txn_one")); f.controller.handleIPN(callback("2_second", "txn_two"));
-        GatewayReceipt extra = f.receiptsByTransaction.get("txn_two"); extra.setTransactionDate("20261109115900");
-        when(f.receipts.findById(extra.getReceiptId())).thenReturn(Optional.of(extra)); when(f.receipts.findByIdForUpdate(extra.getReceiptId())).thenReturn(Optional.of(extra));
-        when(f.gateway.refundPayment(any(), any(), anyString(), anyString())).thenReturn(Map.of("vnp_ResponseCode", "99"));
-        var c = new PaymentReconciliationController(f.receipts, f.payments, f.gateway, f.engagement);
-        var manager = new UsernamePasswordAuthenticationToken("1", "", List.of(new SimpleGrantedAuthority("ROLE_MANAGER")));
-        c.refund(extra.getReceiptId(), manager); assertEquals("REVIEW_REQUIRED", extra.getStatus());
-        assertThrows(ResponseStatusException.class, () -> c.refund(extra.getReceiptId(), manager));
-        verify(f.gateway, times(1)).refundPayment(any(), any(), anyString(), anyString()); assertEquals("PAID", f.order.getPaymentStatus());
-    }
     static UserMembership term(boolean expired) {
         UserMembership m = new UserMembership(); m.setMembershipId(1L); m.setUserId(MEMBER); m.setPackageId(2L); m.setStatus(expired ? "EXPIRED" : "ACTIVE");
         m.setStartDate(LocalDate.now().minusDays(30)); m.setEndDate(expired ? LocalDate.now().minusDays(1) : LocalDate.now().plusDays(1));

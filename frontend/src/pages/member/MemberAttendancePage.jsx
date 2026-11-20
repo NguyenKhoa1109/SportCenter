@@ -1,8 +1,8 @@
 import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import MemberLayout from '../../components/layouts/MemberLayout';
-import { getMemberAttendance, getMemberTickets, createMemberTicket } from '../../services/memberApi';
-import { getCategoryLabel, getTicketStatusMeta, formatTicketDate } from '../../utils/ticketLabels';
+import { getMemberAttendance, createMemberTicket } from '../../services/memberApi';
+import { formatTicketDate } from '../../utils/ticketLabels';
 import { useApp } from '../../context/AppContext';
 import { TableSkeleton, CardGridSkeleton } from '../../components/common/Skeleton';
 import Pagination from '../../components/common/Pagination';
@@ -21,8 +21,7 @@ export default function MemberAttendancePage() {
     checkIns: [],
   });
 
-  const [activeTab, setActiveTab] = useState('classes'); // 'classes' | 'courts' | 'gate' | 'tickets'
-  const [tickets, setTickets] = useState([]);
+  const [activeTab, setActiveTab] = useState('classes'); // 'classes' | 'courts' | 'gate'
   const [statusFilter, setStatusFilter] = useState('ALL'); // 'ALL' | 'PRESENT' | 'EXCUSED_ABSENCE' | 'UNEXCUSED_ABSENCE' | 'REGISTERED'
   const [searchQuery, setSearchQuery] = useState('');
 
@@ -71,18 +70,11 @@ export default function MemberAttendancePage() {
         description: `${prefix}${reason}`,
         severity: 'NORMAL',
       });
-      const latestTickets = await getMemberTickets().catch(() => null);
-      if (Array.isArray(latestTickets)) {
-        setTickets(latestTickets);
-      } else if (created) {
-        setTickets((prev) => [created, ...prev.filter((t) => t.ticketId !== created.ticketId)]);
-      }
-      setActiveTab('tickets');
       setIsDisputeModalOpen(false);
       window.dispatchEvent(new Event('sporthub:notifications-updated'));
       showToast(
         'Gửi khiếu nại thành công',
-        `Phiếu hỗ trợ #TK-${created?.ticketId ?? 'mới'} đã được chuyển tới Ban Quản lý để đối soát.`,
+        `Phiếu hỗ trợ #TK-${created?.ticketId ?? 'mới'} đã được tạo. Bạn có thể theo dõi tại mục Khiếu nại & Hỗ trợ.`,
         'success'
       );
     } catch (err) {
@@ -102,10 +94,7 @@ export default function MemberAttendancePage() {
     setLoading(true);
     setError(null);
     try {
-      const [data, ticketList] = await Promise.all([
-        getMemberAttendance(),
-        getMemberTickets().catch(() => []),
-      ]);
+      const data = await getMemberAttendance();
       setAttendanceData({
         totalSessions: data.totalSessions || 0,
         attendedSessions: data.attendedSessions || 0,
@@ -115,7 +104,6 @@ export default function MemberAttendancePage() {
         courtBookings: data.courtBookings || [],
         checkIns: data.checkIns || [],
       });
-      setTickets(Array.isArray(ticketList) ? ticketList : []);
     } catch (err) {
       console.error('Failed to load attendance:', err);
       setError('Không thể tải dữ liệu điểm danh. Vui lòng thử lại sau.');
@@ -303,18 +291,6 @@ export default function MemberAttendancePage() {
               >
                 <span className="material-symbols-outlined text-[16px]">meeting_room</span>
                 Quét Thẻ Cổng RFID ({attendanceData.checkIns.length})
-              </button>
-              <button
-                onClick={() => setActiveTab('tickets')}
-                type="button"
-                className={`flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
-                  activeTab === 'tickets'
-                    ? 'bg-orange-500 text-white shadow-sm shadow-orange-500/20'
-                    : 'bg-white text-slate-600 border border-slate-200 hover:bg-slate-100'
-                }`}
-              >
-                <span className="material-symbols-outlined text-[16px]">support_agent</span>
-                Khiếu Nại Của Tôi ({tickets.length})
               </button>
             </div>
 
@@ -697,52 +673,6 @@ export default function MemberAttendancePage() {
                       />
                     </div>
                   )}
-                </div>
-              )}
-            </div>
-          )}
-
-          {/* TAB 4: Khiếu nại của tôi */}
-          {activeTab === 'tickets' && (
-            <div className="p-4 sm:p-6">
-              {tickets.length === 0 ? (
-                <div className="text-center py-12 px-4">
-                  <div className="w-16 h-16 rounded-full bg-slate-100 flex items-center justify-center mx-auto mb-3 text-slate-400">
-                    <span className="material-symbols-outlined text-[32px]">support_agent</span>
-                  </div>
-                  <h3 className="text-base font-bold text-slate-800">Chưa có phiếu khiếu nại nào</h3>
-                  <p className="text-sm text-slate-500 mt-1">Khi bạn gửi khiếu nại điểm danh hoặc đặt sân, tiến độ phản hồi từ Quản lý sẽ hiển thị tại đây.</p>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  {tickets.map((t) => {
-                    const stMeta = getTicketStatusMeta(t.status);
-                    return (
-                      <div key={t.ticketId} className="p-4 sm:p-5 rounded-2xl border border-slate-200 bg-white space-y-2.5">
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-xs font-mono font-bold text-slate-400">#TK-{t.ticketId}</span>
-                            <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-orange-50 text-orange-700 border border-orange-200">
-                              {getCategoryLabel(t.category)}
-                            </span>
-                            <h4 className="text-sm font-bold text-slate-900">{t.title}</h4>
-                          </div>
-                          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold border ${stMeta.badgeClass}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${stMeta.dotClass}`} />
-                            {stMeta.label}
-                          </span>
-                        </div>
-                        <p className="text-xs text-slate-600 leading-relaxed whitespace-pre-wrap">{t.description}</p>
-                        {t.adminResponse && (
-                          <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-xs text-emerald-900">
-                            <span className="font-bold">Phản hồi từ Quản lý / Lễ tân: </span>
-                            {t.adminResponse}
-                          </div>
-                        )}
-                        <div className="text-[11px] text-slate-400">Tạo lúc {formatTicketDate(t.createdAt)}</div>
-                      </div>
-                    );
-                  })}
                 </div>
               )}
             </div>

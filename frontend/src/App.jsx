@@ -25,6 +25,7 @@ import MemberTransactionsPage from './pages/member/MemberTransactionsPage';
 import MemberBookingFlowPage from './pages/member/MemberBookingFlowPage';
 import MemberAIAssistantPage from './pages/member/MemberAIAssistantPage';
 import MemberProfilePage from './pages/member/MemberProfilePage';
+import MemberTicketsPage from './pages/member/MemberTicketsPage';
 
 // Receptionist Portal Pages
 import ReceptionDashboardPage from './pages/receptionist/ReceptionDashboardPage';
@@ -63,7 +64,6 @@ import MemberReviewsPage from './pages/member/MemberReviewsPage';
 import AdminBroadcastPage from './pages/admin/AdminBroadcastPage';
 import AdminAuditLogPage from './pages/admin/AdminAuditLogPage';
 import AdminMaintenancePage from './pages/admin/AdminMaintenancePage';
-import AdminPaymentReconciliationPage from './pages/admin/AdminPaymentReconciliationPage';
 import AdminTicketsPage from './pages/admin/AdminTicketsPage';
 import ToastContainer from './components/ToastContainer';
 import PaymentResumeBoundary from './components/PaymentResumeBoundary';
@@ -127,6 +127,7 @@ function App() {
           <Route path="/member/workouts" element={<Navigate to="/member/workout-plans" replace />} />
           <Route path="/member/notifications" element={<RequireRole role="member"><MemberNotificationsPage /></RequireRole>} />
           <Route path="/member/transactions" element={<RequireRole role="member"><MemberTransactionsPage /></RequireRole>} />
+          <Route path="/member/tickets" element={<RequireRole role="member"><MemberTicketsPage /></RequireRole>} />
           <Route path="/member/ai-assistant" element={<RequireRole role="member"><MemberAIAssistantPage /></RequireRole>} />
           <Route path="/member/profile" element={<RequireRole role="member"><MemberProfilePage /></RequireRole>} />
 
@@ -177,7 +178,6 @@ function App() {
 
           <Route path="/admin/broadcast" element={<RequireRole role="admin"><AdminBroadcastPage /></RequireRole>} />
           <Route path="/admin/audit-logs" element={<RequireRole role="admin"><AdminAuditLogPage /></RequireRole>} />
-          <Route path="/admin/payment-reconciliation" element={<RequireRole role="admin"><AdminPaymentReconciliationPage /></RequireRole>} />
           <Route path="/admin/maintenance" element={<RequireRole role="admin"><AdminMaintenancePage /></RequireRole>} />
           <Route path="/admin/tickets" element={<RequireRole role="admin"><AdminTicketsPage /></RequireRole>} />
 

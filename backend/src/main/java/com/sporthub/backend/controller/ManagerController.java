@@ -24,6 +24,7 @@ import com.sporthub.backend.service.EmailService;
 import com.sporthub.backend.service.MembershipService;
 import com.sporthub.backend.util.CoachSportHelper;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.HttpStatus;
@@ -107,6 +108,7 @@ public class ManagerController {
     public Page<ManagerUserResponse> searchUsers(
             @RequestParam(defaultValue = "") String query,
             @RequestParam(required = false) String role,
+            @RequestParam(defaultValue = "false") boolean staffOnly,
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "12") int size,
             Authentication authentication) {
@@ -123,11 +125,25 @@ public class ManagerController {
         }
 
         List<Sport> allSports = loadDomainSports();
-        return userRepository.searchManagerUsers(
+        Page<User> users = staffOnly
+                ? userRepository.searchManagerStaff(
                         query.trim(),
                         normalizedRole,
                         PageRequest.of(page, Math.min(Math.max(size, 1), 50)))
-                .map(user -> toUserResponse(user, allSports));
+                : userRepository.searchManagerUsers(
+                        query.trim(),
+                        normalizedRole,
+                        PageRequest.of(page, Math.min(Math.max(size, 1), 50)));
+        return users.map(user -> toUserResponse(user, allSports));
+    }
+
+    public Page<ManagerUserResponse> searchUsers(
+            String query,
+            String role,
+            int page,
+            int size,
+            Authentication authentication) {
+        return searchUsers(query, role, false, page, size, authentication);
     }
 
     @GetMapping("/members")
@@ -723,6 +739,103 @@ public class ManagerController {
                 CoachSportHelper.resolveCoachSportIds(user, allSports));
     }
 
+    @PutMapping("/users/{userId}")
+    @Transactional
+    public ManagerUserResponse updateUser(
+            @PathVariable Long userId,
+            @RequestBody UpdateStaffUserRequest request,
+            Authentication authentication) {
+        requireManager(authentication);
+        if (request == null || request.fullName() == null || request.fullName().isBlank()) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Họ tên không được để trống.");
+        }
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản."));
+        String normalizedRole = request.role() == null || request.role().isBlank()
+                ? targetUser.getRole()
+                : request.role().trim().toUpperCase(Locale.ROOT);
+        if ("ADMIN".equals(normalizedRole)) {
+            normalizedRole = "MANAGER";
+        }
+        if (!List.of("MEMBER", "COACH", "RECEPTIONIST", "MANAGER").contains(normalizedRole)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vai trò không hợp lệ.");
+        }
+        Long currentManagerId = actorId(authentication);
+        if (currentManagerId != null && currentManagerId.equals(userId) && !"MANAGER".equals(normalizedRole)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Không thể tự hạ vai trò của chính mình.");
+        }
+        targetUser.setFullName(request.fullName().trim());
+        targetUser.setPhone(request.phone() == null || request.phone().isBlank() ? null : request.phone().trim());
+        targetUser.setRole(normalizedRole);
+        User saved = userRepository.save(targetUser);
+        return toUserResponse(saved, loadDomainSports());
+    }
+
+    @PatchMapping("/users/{userId}/lock")
+    @Transactional
+    public ManagerUserResponse lockUser(
+            @PathVariable Long userId,
+            Authentication authentication) {
+        requireManager(authentication);
+        Long currentManagerId = actorId(authentication);
+        if (currentManagerId != null && currentManagerId.equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quản lý không thể tự khóa tài khoản của chính mình (BR-03).");
+        }
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+        if ("MANAGER".equalsIgnoreCase(targetUser.getRole()) || "ADMIN".equalsIgnoreCase(targetUser.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Không thể khóa tài khoản có vai trò Quản lý (BR-03).");
+        }
+        if (!"ACTIVE".equalsIgnoreCase(targetUser.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ có thể khóa tài khoản đang hoạt động.");
+        }
+        targetUser.setStatus("LOCKED");
+        return toUserResponse(userRepository.save(targetUser), loadDomainSports());
+    }
+
+    @PatchMapping("/users/{userId}/unlock")
+    @Transactional
+    public ManagerUserResponse unlockUser(
+            @PathVariable Long userId,
+            Authentication authentication) {
+        requireManager(authentication);
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy người dùng."));
+        if (!"LOCKED".equalsIgnoreCase(targetUser.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tài khoản không ở trạng thái bị khóa.");
+        }
+        targetUser.setStatus("ACTIVE");
+        return toUserResponse(userRepository.save(targetUser), loadDomainSports());
+    }
+
+    @DeleteMapping("/users/{userId}")
+    public Map<String, Object> deleteUser(
+            @PathVariable Long userId,
+            Authentication authentication) {
+        requireManager(authentication);
+        Long currentManagerId = actorId(authentication);
+        if (currentManagerId != null && currentManagerId.equals(userId)) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Quản lý không thể tự xóa tài khoản của chính mình.");
+        }
+        User targetUser = userRepository.findById(userId)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy tài khoản."));
+        if ("MANAGER".equalsIgnoreCase(targetUser.getRole()) || "ADMIN".equalsIgnoreCase(targetUser.getRole())) {
+            throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Không thể xóa tài khoản Quản lý.");
+        }
+        try {
+            userRepository.deleteById(userId);
+            return Map.of("deleted", true, "softDeleted", false, "message", "Đã xóa tài khoản nhân sự.");
+        } catch (DataIntegrityViolationException ex) {
+            targetUser.setStatus("INACTIVE");
+            userRepository.save(targetUser);
+            return Map.of(
+                    "deleted", true,
+                    "softDeleted", true,
+                    "message", "Nhân sự đã có dữ liệu lịch sử nên đã được ngừng hoạt động.");
+        }
+    }
+
     public record PackageStatusRequest(String status) {}
     public record UpdateCoachSportsRequest(List<Long> sportIds, String specialty) {}
+    public record UpdateStaffUserRequest(String fullName, String phone, String role) {}
 }

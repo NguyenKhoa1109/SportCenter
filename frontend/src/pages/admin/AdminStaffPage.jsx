@@ -6,20 +6,22 @@ import { TableSkeleton } from '../../components/common/Skeleton';
 import Pagination from '../../components/common/Pagination';
 import { apiRequest } from '../../services/apiClient';
 import {
+  deleteManagerUser,
   getManagerDomainSports,
   getStaffPerformance,
+  lockManagerUser,
+  unlockManagerUser,
   updateManagerCoachSports,
+  updateManagerUser,
 } from '../../services/managerApi';
 import { useApp } from '../../context/AppContext';
 import { resolveCoachSportIds } from '../../utils/coachSport';
 
 const PAGE_SIZE = 12;
 const ROLE_LABELS = {
-  MANAGER: 'Quản lý',
-  ADMIN: 'Quản trị viên',
   COACH: 'Coach',
   RECEPTIONIST: 'Lễ tân',
-  MEMBER: 'Hội viên',
+  MANAGER: 'Quản lý',
 };
 
 const STATUS_STYLES = {
@@ -66,6 +68,14 @@ export default function AdminStaffPage() {
   const [editSportIds, setEditSportIds] = useState([]);
   const [editSportError, setEditSportError] = useState('');
   const [savingCoachSports, setSavingCoachSports] = useState(false);
+
+  // Edit / Lock / Delete Staff State
+  const [editingStaff, setEditingStaff] = useState(null);
+  const [editForm, setEditForm] = useState({ fullName: '', phone: '', role: 'COACH' });
+  const [editStaffError, setEditStaffError] = useState('');
+  const [savingStaff, setSavingStaff] = useState(false);
+  const [deletingStaff, setDeletingStaff] = useState(null);
+  const [busyUserId, setBusyUserId] = useState(null);
 
   const openEditCoachSports = async (coachUser) => {
     setEditingCoach(coachUser);
@@ -139,6 +149,7 @@ export default function AdminStaffPage() {
     try {
       const params = new URLSearchParams({
         query,
+        staffOnly: 'true',
         page: String(page),
         size: String(PAGE_SIZE),
       });
@@ -146,11 +157,81 @@ export default function AdminStaffPage() {
       const data = await apiRequest(`/manager/users?${params}`);
       setUsersPage(data);
     } catch (requestError) {
-      setError(requestError.message || 'Không thể tải danh sách tài khoản.');
+      setError(requestError.message || 'Không thể tải danh sách nhân sự.');
     } finally {
       setLoading(false);
     }
   }, [page, query, role]);
+
+  const openEditStaff = (user) => {
+    const normalizedRole = user.role?.toUpperCase() === 'ADMIN' ? 'MANAGER' : user.role?.toUpperCase() || 'COACH';
+    setEditingStaff(user);
+    setEditForm({
+      fullName: user.fullName || '',
+      phone: user.phone || '',
+      role: normalizedRole,
+    });
+    setEditStaffError('');
+  };
+
+  const handleSaveStaff = async (e) => {
+    e.preventDefault();
+    if (!editingStaff) return;
+    if (!editForm.fullName.trim()) {
+      setEditStaffError('Họ tên không được để trống.');
+      return;
+    }
+    setSavingStaff(true);
+    setEditStaffError('');
+    try {
+      await updateManagerUser(editingStaff.userId, {
+        fullName: editForm.fullName.trim(),
+        phone: editForm.phone.trim(),
+        role: editForm.role,
+      });
+      showToast('Thành công', `Đã cập nhật thông tin cho ${editForm.fullName.trim()}.`, 'success');
+      setEditingStaff(null);
+      await loadUsers();
+    } catch (err) {
+      setEditStaffError(err.message || 'Không thể cập nhật thông tin nhân sự.');
+    } finally {
+      setSavingStaff(false);
+    }
+  };
+
+  const handleToggleLock = async (user) => {
+    const isLocked = user.status?.toUpperCase() === 'LOCKED';
+    setBusyUserId(user.userId);
+    try {
+      if (isLocked) {
+        await unlockManagerUser(user.userId);
+        showToast('Đã mở khóa', `Tài khoản ${user.fullName} đã được kích hoạt lại.`, 'success');
+      } else {
+        await lockManagerUser(user.userId);
+        showToast('Đã khóa tài khoản', `Tài khoản ${user.fullName} đã bị khóa.`, 'success');
+      }
+      await loadUsers();
+    } catch (err) {
+      showToast('Thao tác thất bại', err.message || 'Không thể thay đổi trạng thái tài khoản.', 'error');
+    } finally {
+      setBusyUserId(null);
+    }
+  };
+
+  const handleDeleteStaff = async () => {
+    if (!deletingStaff) return;
+    setBusyUserId(deletingStaff.userId);
+    try {
+      const res = await deleteManagerUser(deletingStaff.userId);
+      showToast('Đã xóa nhân sự', res?.message || `Đã xóa tài khoản ${deletingStaff.fullName}.`, 'success');
+      setDeletingStaff(null);
+      await loadUsers();
+    } catch (err) {
+      showToast('Không thể xóa', err.message || 'Không thể xóa tài khoản nhân sự.', 'error');
+    } finally {
+      setBusyUserId(null);
+    }
+  };
 
   useEffect(() => {
     loadUsers();
@@ -179,7 +260,7 @@ export default function AdminStaffPage() {
               <span className="w-2 h-2 rounded-full bg-orange-500 animate-pulse"></span>
               F SPORT ADMIN · NHÂN SỰ &amp; NGƯỜI DÙNG
             </div>
-            <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Nhân sự &amp; Khách</h1>
+            <h1 className="text-2xl font-bold text-slate-900 sm:text-3xl">Quản lý nhân sự</h1>
             <p className="mt-1 text-sm text-slate-500">
               Danh sách nhân viên và hội viên được tải trực tiếp từ cơ sở dữ liệu F Sport.
             </p>
@@ -217,7 +298,7 @@ export default function AdminStaffPage() {
             }`}
           >
             <span className="material-symbols-outlined text-[18px]">group</span>
-            <span>Danh Sách Nhân Sự &amp; Khách ({usersPage.totalElements})</span>
+            <span>Danh Sách Nhân Sự ({usersPage.totalElements})</span>
           </button>
           <button
             type="button"
@@ -312,7 +393,7 @@ export default function AdminStaffPage() {
                         </td>
                         <td className="px-5 py-4 text-slate-700">
                           <span className="font-medium block">
-                            {ROLE_LABELS[user.role?.toUpperCase()] || user.role}
+                            {ROLE_LABELS[user.role?.toUpperCase() === 'ADMIN' ? 'MANAGER' : user.role?.toUpperCase()] || user.role}
                           </span>
                           {isCoach && (
                             <span className={`mt-1 inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold ${
@@ -334,18 +415,54 @@ export default function AdminStaffPage() {
                         </td>
                         <td className="px-5 py-4 text-slate-600">{formatDate(user.createdAt)}</td>
                         <td className="px-5 py-4 text-right">
-                          {isCoach ? (
+                          <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
+                            {isCoach && (
+                              <button
+                                type="button"
+                                onClick={() => openEditCoachSports(user)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors cursor-pointer"
+                              >
+                                <span className="material-symbols-outlined text-[15px]">sports</span>
+                                Bộ môn
+                              </button>
+                            )}
                             <button
                               type="button"
-                              onClick={() => openEditCoachSports(user)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors cursor-pointer"
+                              onClick={() => openEditStaff(user)}
+                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
                             >
-                              <span className="material-symbols-outlined text-[15px]">sports</span>
-                              Gán bộ môn
+                              <span className="material-symbols-outlined text-[15px]">edit</span>
+                              Sửa
                             </button>
-                          ) : (
-                            <span className="text-xs text-slate-400">—</span>
-                          )}
+                            {!['MANAGER', 'ADMIN'].includes(user.role?.toUpperCase()) && (
+                              <>
+                                <button
+                                  type="button"
+                                  disabled={busyUserId === user.userId}
+                                  onClick={() => handleToggleLock(user)}
+                                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:opacity-50 ${
+                                    user.status?.toUpperCase() === 'LOCKED'
+                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
+                                      : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                                  }`}
+                                >
+                                  <span className="material-symbols-outlined text-[15px]">
+                                    {user.status?.toUpperCase() === 'LOCKED' ? 'lock_open' : 'lock'}
+                                  </span>
+                                  {user.status?.toUpperCase() === 'LOCKED' ? 'Mở khóa' : 'Khóa'}
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={busyUserId === user.userId}
+                                  onClick={() => setDeletingStaff(user)}
+                                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors cursor-pointer disabled:opacity-50"
+                                >
+                                  <span className="material-symbols-outlined text-[15px]">delete</span>
+                                  Xóa
+                                </button>
+                              </>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );
@@ -591,7 +708,119 @@ export default function AdminStaffPage() {
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
         onSuccess={loadUsers}
+        staffOnly
       />
+
+      {editingStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs !m-0">
+          <div className="relative w-full max-w-md overflow-hidden bg-white rounded-2xl border border-slate-200 shadow-2xl">
+            <div className="flex items-center justify-between border-b border-slate-100 px-6 py-4">
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Sửa thông tin nhân sự</h2>
+                <p className="text-xs text-slate-500">{editingStaff.email}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingStaff(null)}
+                className="p-1 rounded-lg text-slate-400 hover:text-slate-700 hover:bg-slate-100 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
+            </div>
+            <form onSubmit={handleSaveStaff} className="p-6 space-y-4">
+              {editStaffError && (
+                <div role="alert" className="p-3 rounded-xl border border-red-200 bg-red-50 text-xs font-bold text-red-700">
+                  {editStaffError}
+                </div>
+              )}
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Họ và tên *</label>
+                <input
+                  type="text"
+                  required
+                  value={editForm.fullName}
+                  onChange={(e) => setEditForm((f) => ({ ...f, fullName: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Số điện thoại</label>
+                <input
+                  type="text"
+                  value={editForm.phone}
+                  onChange={(e) => setEditForm((f) => ({ ...f, phone: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm outline-none focus:border-orange-500"
+                />
+              </div>
+              <div className="space-y-1">
+                <label className="text-xs font-bold text-slate-700">Vai trò</label>
+                <select
+                  value={editForm.role}
+                  onChange={(e) => setEditForm((f) => ({ ...f, role: e.target.value }))}
+                  className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold outline-none focus:border-orange-500"
+                >
+                  <option value="COACH">Huấn luyện viên (COACH)</option>
+                  <option value="RECEPTIONIST">Nhân viên lễ tân (RECEPTIONIST)</option>
+                  <option value="MANAGER">Quản lý hệ thống (MANAGER)</option>
+                </select>
+              </div>
+              <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setEditingStaff(null)}
+                  disabled={savingStaff}
+                  className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingStaff}
+                  className="px-5 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider shadow-sm disabled:opacity-50 cursor-pointer"
+                >
+                  {savingStaff ? 'Đang lưu...' : 'Lưu thay đổi'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {deletingStaff && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs !m-0">
+          <div className="relative w-full max-w-sm overflow-hidden bg-white rounded-2xl border border-slate-200 shadow-2xl p-6 space-y-4">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-50 text-red-600 flex items-center justify-center shrink-0">
+                <span className="material-symbols-outlined text-[22px]">delete_forever</span>
+              </div>
+              <div>
+                <h2 className="text-base font-bold text-slate-900">Xác nhận xóa nhân sự</h2>
+                <p className="text-xs text-slate-500 mt-0.5">
+                  Bạn có chắc muốn xóa tài khoản <strong>{deletingStaff.fullName}</strong> ({deletingStaff.email})?
+                </p>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setDeletingStaff(null)}
+                disabled={busyUserId === deletingStaff.userId}
+                className="px-4 py-2 rounded-xl border border-slate-300 text-xs font-bold text-slate-700 hover:bg-slate-50 cursor-pointer"
+              >
+                Hủy
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteStaff}
+                disabled={busyUserId === deletingStaff.userId}
+                className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-bold shadow-sm disabled:opacity-50 cursor-pointer"
+              >
+                {busyUserId === deletingStaff.userId ? 'Đang xóa...' : 'Xác nhận xóa'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {editingCoach && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs !m-0">

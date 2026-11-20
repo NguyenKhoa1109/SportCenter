@@ -77,7 +77,7 @@ export default function AdminLayout({ children, dashboardQuickAction }) {
       subtitle: 'Danh sách, trạng thái thẻ và hồ sơ hội viên',
     },
     {
-      label: 'Nhân sự & Khách',
+      label: 'Quản lý nhân sự',
       path: '/admin/staff',
       icon: 'group',
       section: 'Nhân sự & Hội viên',
@@ -89,13 +89,6 @@ export default function AdminLayout({ children, dashboardQuickAction }) {
       icon: 'support_agent',
       section: 'Nhân sự & Hội viên',
       subtitle: 'Theo dõi và phản hồi các ticket khiếu nại từ hội viên',
-    },
-    {
-      label: 'Đối soát thanh toán dư',
-      path: '/admin/payment-reconciliation',
-      icon: 'payments',
-      section: 'Tài chính & Hệ thống',
-      subtitle: 'Đối soát giao dịch dư và hoàn tiền thanh toán',
     },
     {
       label: 'Thông báo hàng loạt',

@@ -275,17 +275,11 @@ export default function AdminDashboardPage() {
           </div>
         </header>
 
-        <section aria-label="Thao tác quản trị" className="grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <section aria-label="Thao tác quản trị" className="grid grid-cols-1 gap-3 sm:grid-cols-3">
           {[
             ['Lịch & sân bãi', 'Xem lịch đặt và quản lý sân', 'stadium', '/admin/facilities'],
             ['Tạo lịch lớp học', 'Sắp xếp lớp và huấn luyện viên', 'event_available', '/admin/classes/new'],
             ['Duyệt nhân sự', 'Xử lý đăng ký nhân viên', 'how_to_reg', '/admin/staff-approvals'],
-            [
-              'Đối soát thanh toán',
-              'Kiểm tra giao dịch thanh toán dư',
-              'account_balance_wallet',
-              '/admin/payment-reconciliation',
-            ],
           ].map(([title, description, icon, path]) => (
             <Link
               key={path}

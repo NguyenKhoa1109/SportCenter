@@ -28,6 +28,21 @@ export const lockManagerMember = (userId) =>
 export const unlockManagerMember = (userId) =>
   apiRequest(`/manager/members/${userId}/unlock`, { method: 'PATCH' });
 
+export const updateManagerUser = (userId, data) =>
+  apiRequest(`/manager/users/${userId}`, {
+    method: 'PUT',
+    body: JSON.stringify(data),
+  });
+
+export const lockManagerUser = (userId) =>
+  apiRequest(`/manager/users/${userId}/lock`, { method: 'PATCH' });
+
+export const unlockManagerUser = (userId) =>
+  apiRequest(`/manager/users/${userId}/unlock`, { method: 'PATCH' });
+
+export const deleteManagerUser = (userId) =>
+  apiRequest(`/manager/users/${userId}`, { method: 'DELETE' });
+
 export const getManagerPackages = () => apiRequest('/manager/packages');
 
 export const getManagerSports = () => apiRequest('/manager/sports');

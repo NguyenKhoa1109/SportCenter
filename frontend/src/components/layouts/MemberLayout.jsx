@@ -92,6 +92,13 @@ export default function MemberLayout({ children }) {
       subtitle: 'Biên lai điện tử, hoàn tiền và chi tiêu',
     },
     {
+      label: 'Khiếu nại & Hỗ trợ',
+      path: '/member/tickets',
+      icon: 'support_agent',
+      section: 'Gói tập & Tài khoản',
+      subtitle: 'Gửi khiếu nại và theo dõi phản hồi từ trung tâm',
+    },
+    {
       label: 'Hồ sơ & Thẻ số',
       path: '/member/profile',
       icon: 'badge',

@@ -1,20 +1,12 @@
 import { useState, useEffect, useMemo } from 'react';
 import MemberLayout from '../../components/layouts/MemberLayout';
 import {
-  createMemberTicket,
   getMemberProfile,
-  getMemberTickets,
   getMemberTransactions,
 } from '../../services/memberApi';
 import { useApp } from '../../context/AppContext';
 import Pagination from '../../components/common/Pagination';
 import { TableSkeleton } from '../../components/common/Skeleton';
-import {
-  formatTicketDate,
-  getCategoryLabel,
-  getTicketSeverityMeta,
-  getTicketStatusMeta,
-} from '../../utils/ticketLabels';
 
 // Import only 2 reusable modals
 import ReceiptModal from '../../components/member/ReceiptModal';
@@ -79,7 +71,6 @@ const FILTER_LABELS = {
 export default function MemberTransactionsPage() {
   const { showToast } = useApp();
   const [transactions, setTransactions] = useState([]);
-  const [tickets, setTickets] = useState([]);
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -90,35 +81,25 @@ export default function MemberTransactionsPage() {
   // Modal states
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showRefundModal, setShowRefundModal] = useState(false);
-  const [showComplaintModal, setShowComplaintModal] = useState(false);
-
-  // Complaint modal form states
-  const [complaintCategory, setComplaintCategory] = useState('ATTENDANCE_DISPUTE');
-  const [complaintTitle, setComplaintTitle] = useState('');
-  const [complaintDescription, setComplaintDescription] = useState('');
-  const [complaintSeverity, setComplaintSeverity] = useState('NORMAL');
 
   const fetchDashboardData = async () => {
-    const [txRes, profRes, ticketRes] = await Promise.all([
+    const [txRes, profRes] = await Promise.all([
       getMemberTransactions().catch(() => []),
       getMemberProfile().catch(() => null),
-      getMemberTickets().catch(() => []),
     ]);
     return {
       txList: Array.isArray(txRes) ? txRes : [],
       profRes,
-      ticketList: Array.isArray(ticketRes) ? ticketRes : [],
     };
   };
 
   useEffect(() => {
     let active = true;
     fetchDashboardData()
-      .then(({ txList, profRes, ticketList }) => {
+      .then(({ txList, profRes }) => {
         if (!active) return;
         setTransactions(txList);
         setProfile(profRes);
-        setTickets(ticketList);
         setError(null);
       })
       .catch((err) => {
@@ -137,10 +118,9 @@ export default function MemberTransactionsPage() {
     setLoading(true);
     setError(null);
     try {
-      const { txList, profRes, ticketList } = await fetchDashboardData();
+      const { txList, profRes } = await fetchDashboardData();
       setTransactions(txList);
       setProfile(profRes);
-      setTickets(ticketList);
     } catch (err) {
       console.error('Error loading transactions:', err);
       setError('Không thể tải lịch sử giao dịch.');
@@ -193,37 +173,6 @@ export default function MemberTransactionsPage() {
     setCurrentPage(1); // Reset to first page when filter changes
   };
 
-  // Handle complaint submission
-  const handleComplaintSubmit = async (e) => {
-    e.preventDefault();
-    if (!complaintTitle.trim() || !complaintDescription.trim()) {
-      showToast('Lỗi', 'Vui lòng điền đầy đủ tiêu đề và nội dung khiếu nại.', 'error');
-      return;
-    }
-
-    try {
-      await createMemberTicket({
-        category: complaintCategory,
-        title: complaintTitle.trim(),
-        description: complaintDescription.trim(),
-        severity: complaintSeverity,
-      });
-
-      setComplaintTitle('');
-      setComplaintDescription('');
-      setShowComplaintModal(false);
-
-      showToast(
-        'Khiếu nại đã gửi thành công',
-        'Bộ phận CSKH và Quản lý F Sport sẽ phản hồi trong vòng 24h.',
-        'success'
-      );
-      await loadData();
-    } catch (err) {
-      showToast('Lỗi gửi khiếu nại', err.message || 'Không thể gửi khiếu nại.', 'error');
-    }
-  };
-
   return (
     <MemberLayout>
       <div className="max-w-6xl mx-auto space-y-8 animate-in fade-in duration-300">
@@ -243,15 +192,6 @@ export default function MemberTransactionsPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <button
-              onClick={() => setShowComplaintModal(true)}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2.5 rounded-xl bg-white border border-slate-200 text-slate-700 hover:text-orange-600 hover:bg-slate-50 text-xs font-bold shadow-sm transition-all cursor-pointer"
-            >
-              <span className="material-symbols-outlined text-[18px] text-amber-500">report_problem</span>
-              Gửi Khiếu Nại
-            </button>
-
             <button
               onClick={() => setShowRefundModal(true)}
               type="button"
@@ -478,209 +418,7 @@ export default function MemberTransactionsPage() {
             )}
           </div>
         </div>
-
-        {/* Support Tickets & Responses Section */}
-        <section className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="p-4 sm:p-5 border-b border-slate-200 bg-slate-50/50 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="material-symbols-outlined text-[20px] text-orange-500">support_agent</span>
-                <h2 className="text-base font-bold text-slate-900">
-                  Khiếu Nại &amp; Phản Hồi Hỗ Trợ ({tickets.length})
-                </h2>
-              </div>
-              <p className="text-xs text-slate-500 mt-0.5">
-                Theo dõi trạng thái xử lý và phản hồi trực tiếp từ Lễ tân / Quản lý trung tâm.
-              </p>
-            </div>
-            <button
-              onClick={() => setShowComplaintModal(true)}
-              type="button"
-              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-amber-50 border border-amber-200 text-amber-800 hover:bg-amber-100 text-xs font-bold transition-colors cursor-pointer self-start sm:self-auto"
-            >
-              <span className="material-symbols-outlined text-[16px]">add_comment</span>
-              Gửi Khiếu Nại Mới
-            </button>
-          </div>
-
-          <div className="p-4 sm:p-5">
-            {loading ? (
-              <TableSkeleton rows={3} cols={4} />
-            ) : tickets.length === 0 ? (
-              <div className="py-10 text-center">
-                <div className="w-12 h-12 mx-auto mb-2.5 rounded-2xl bg-slate-100 flex items-center justify-center text-slate-400">
-                  <span className="material-symbols-outlined text-[26px]">mark_chat_read</span>
-                </div>
-                <h3 className="text-sm font-bold text-slate-800">Bạn chưa gửi khiếu nại nào</h3>
-                <p className="text-xs text-slate-500 mt-1">
-                  Nếu có vấn đề về hóa đơn, điểm danh hoặc cơ sở vật chất, hãy bấm &quot;Gửi Khiếu Nại Mới&quot;.
-                </p>
-              </div>
-            ) : (
-              <div className="space-y-3">
-                {tickets.map((ticket) => {
-                  const statusMeta = getTicketStatusMeta(ticket.status);
-                  const sevMeta = getTicketSeverityMeta(ticket.severity);
-                  return (
-                    <article
-                      key={ticket.ticketId}
-                      className="rounded-2xl border border-slate-200 p-4 space-y-2.5 hover:border-slate-300 transition-colors"
-                    >
-                      <div className="flex flex-wrap items-start justify-between gap-2">
-                        <div className="space-y-1">
-                          <div className="flex flex-wrap items-center gap-2">
-                            <span className="font-mono text-xs font-bold text-slate-500">
-                              #TK-{ticket.ticketId}
-                            </span>
-                            <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[10px] font-bold">
-                              {getCategoryLabel(ticket.category)}
-                            </span>
-                            <span className={`px-2 py-0.5 rounded-full border text-[10px] font-bold ${sevMeta.badgeClass}`}>
-                              {sevMeta.label}
-                            </span>
-                          </div>
-                          <h3 className="text-sm font-bold text-slate-900">{ticket.title}</h3>
-                        </div>
-
-                        <div className="flex flex-col items-end gap-1">
-                          <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full border text-[10px] font-bold ${statusMeta.badgeClass}`}>
-                            <span className={`w-1.5 h-1.5 rounded-full ${statusMeta.dotClass}`} />
-                            {statusMeta.label}
-                          </span>
-                          <span className="text-[11px] text-slate-400">
-                            {formatTicketDate(ticket.createdAt)}
-                          </span>
-                        </div>
-                      </div>
-
-                      <p className="text-xs text-slate-600 whitespace-pre-line leading-relaxed">
-                        {ticket.description}
-                      </p>
-
-                      {ticket.adminResponse ? (
-                        <div className="rounded-xl border border-emerald-200 bg-emerald-50/70 p-3 text-xs text-emerald-950">
-                          <div className="font-bold flex items-center gap-1.5 text-emerald-800 mb-1">
-                            <span className="material-symbols-outlined text-[16px]">quickreply</span>
-                            <span>Phản hồi từ trung tâm</span>
-                          </div>
-                          <p className="whitespace-pre-line leading-relaxed">{ticket.adminResponse}</p>
-                        </div>
-                      ) : (
-                        <div className="text-[11px] text-slate-400 italic flex items-center gap-1">
-                          <span className="material-symbols-outlined text-[14px]">schedule</span>
-                          <span>Đang chờ bộ phận hỗ trợ tiếp nhận và phản hồi...</span>
-                        </div>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        </section>
       </div>
-
-      {/* Complaint Modal - INLINE */}
-      {showComplaintModal && (
-        <div
-          onClick={() => setShowComplaintModal(false)}
-          className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-4 !m-0"
-        >
-            <div
-              onClick={(e) => e.stopPropagation()}
-              className="w-full max-w-lg bg-white rounded-3xl shadow-2xl border border-slate-200 p-6 space-y-5 relative"
-            >
-              <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-                <div className="flex items-center gap-2">
-                  <div className="w-10 h-10 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
-                    <span className="material-symbols-outlined text-[20px]">report_problem</span>
-                  </div>
-                  <div>
-                    <h3 className="font-bold text-slate-900 text-base">Gửi Khiếu Nại & Góp Ý Dịch Vụ</h3>
-                    <p className="text-xs text-slate-500">Tiếp nhận khiếu nại điểm danh sai, chất lượng sân hoặc Huấn luyện viên</p>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setShowComplaintModal(false)}
-                  className="w-8 h-8 rounded-full bg-slate-100 text-slate-500 hover:text-slate-900 flex items-center justify-center cursor-pointer"
-                  type="button"
-                >
-                  <span className="material-symbols-outlined text-[18px]">close</span>
-                </button>
-              </div>
-
-              <form onSubmit={handleComplaintSubmit} className="space-y-4">
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Danh Mục Khiếu Nại</label>
-                    <select
-                      value={complaintCategory}
-                      onChange={(e) => setComplaintCategory(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white"
-                    >
-                      <option value="ATTENDANCE_DISPUTE">Điểm danh sai / Bị đánh vắng</option>
-                      <option value="COACH_DISPUTE">Vấn đề Huấn luyện viên</option>
-                      <option value="SERVICE_QUALITY">Cơ sở vật chất / Sân bãi</option>
-                      <option value="BILLING_ISSUE">Sai sót hóa đơn / Thanh toán</option>
-                    </select>
-                  </div>
-
-                  <div className="space-y-1">
-                    <label className="text-xs font-bold text-slate-700">Mức Độ Khẩn</label>
-                    <select
-                      value={complaintSeverity}
-                      onChange={(e) => setComplaintSeverity(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white"
-                    >
-                      <option value="NORMAL">Bình thường (Phản hồi trong 24h)</option>
-                      <option value="URGENT">Khẩn cấp (Phản hồi trong 4h)</option>
-                    </select>
-                  </div>
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Tiêu Đề Khiếu Nại</label>
-                  <input
-                    type="text"
-                    placeholder="Ví dụ: Buổi học Cầu lông ngày 20/10 có mặt nhưng bị ghi vắng không phép"
-                    value={complaintTitle}
-                    onChange={(e) => setComplaintTitle(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold"
-                  />
-                </div>
-
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-700">Mô Tả Chi Tiết Vấn Đề</label>
-                  <textarea
-                    rows="3"
-                    placeholder="Mô tả cụ thể thời gian, vị trí sân, tên HLV hoặc chi tiết sự việc để Ban Quản Lý đối soát camera & nhật ký hệ thống..."
-                    value={complaintDescription}
-                    onChange={(e) => setComplaintDescription(e.target.value)}
-                    required
-                    className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs bg-white focus:ring-2 focus:ring-orange-500"
-                  ></textarea>
-                </div>
-
-                <div className="flex justify-end gap-2 pt-2 border-t border-slate-100">
-                  <button
-                    type="button"
-                    onClick={() => setShowComplaintModal(false)}
-                    className="px-4 py-2 rounded-xl border border-slate-200 text-xs font-bold text-slate-600 hover:bg-slate-50 cursor-pointer"
-                  >
-                    Hủy Bỏ
-                  </button>
-                  <button
-                    type="submit"
-                    className="px-5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shadow-md cursor-pointer"
-                  >
-                    Gửi Khiếu Nại
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>
-        )}
 
         {/* Modals - Only 2 reusable modals imported */}
         <ReceiptModal 
