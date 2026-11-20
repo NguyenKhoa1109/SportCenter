@@ -1309,7 +1309,7 @@ export default function CoachStudentsPage() {
 
                         {showBodyLogForm && (
                           <form onSubmit={handleSaveBodyLog} className="p-4 rounded-xl border border-orange-200 bg-orange-50/40 space-y-3">
-                            <h4 className="text-xs font-bold text-slate-900 uppercase">Nhập Chỉ Số Cơ Thể &amp; 1RM (MEM-21 / COA-08)</h4>
+                            <h4 className="text-xs font-bold text-slate-900 uppercase">Nhập Chỉ Số Cơ Thể &amp; 1RM</h4>
                             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2.5">
                               <div>
                                 <label className="block text-[10px] font-bold text-slate-600 uppercase mb-0.5">Cân nặng (kg)</label>

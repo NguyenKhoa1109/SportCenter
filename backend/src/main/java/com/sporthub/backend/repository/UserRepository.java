@@ -90,6 +90,7 @@ public interface UserRepository extends JpaRepository<User, Long> {
                    or lower(user.fullName) like lower(concat('%', :query, '%'))
                    or lower(user.email) like lower(concat('%', :query, '%'))
                    or user.phone like concat('%', :query, '%')
+                   or lower(coalesce(user.rfidCode, '')) like lower(concat('%', :query, '%'))
                    or cast(user.userId as string) like concat('%', :query, '%'))
             order by user.userId desc
             """)

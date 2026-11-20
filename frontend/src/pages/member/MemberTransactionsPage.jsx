@@ -366,22 +366,55 @@ export default function MemberTransactionsPage() {
 
                           {/* Status Badge */}
                           <td className="py-3.5 px-2.5 whitespace-nowrap">
-                            {isRefund ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 whitespace-nowrap">
-                                <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0"></span>
-                                Đã Hoàn Tiền
-                              </span>
-                            ) : isQuota ? (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
-                                <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0"></span>
-                                Khấu Trừ Quota
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap">
-                                <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0"></span>
-                                Thành Công
-                              </span>
-                            )}
+                            {(() => {
+                              const ps = String(tx.paymentStatus || '').toUpperCase();
+                              if (isRefund) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-indigo-100 text-indigo-800 border border-indigo-200 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-indigo-600 shrink-0"></span>
+                                    Đã Hoàn Tiền
+                                  </span>
+                                );
+                              }
+                              if (ps === 'PENDING' || ps === 'PENDING_PAYMENT') {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0"></span>
+                                    Chờ Thanh Toán
+                                  </span>
+                                );
+                              }
+                              if (ps === 'FAILED') {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-rose-100 text-rose-800 border border-rose-200 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-rose-600 shrink-0"></span>
+                                    Thất Bại
+                                  </span>
+                                );
+                              }
+                              if (ps === 'CANCELLED' || ps === 'VOID') {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-100 text-slate-700 border border-slate-200 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-slate-500 shrink-0"></span>
+                                    Đã Hủy
+                                  </span>
+                                );
+                              }
+                              if (isQuota) {
+                                return (
+                                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-100 text-amber-800 border border-amber-200 whitespace-nowrap">
+                                    <span className="w-1.5 h-1.5 rounded-full bg-amber-600 shrink-0"></span>
+                                    Khấu Trừ Quota
+                                  </span>
+                                );
+                              }
+                              return (
+                                <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-200 whitespace-nowrap">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600 shrink-0"></span>
+                                  Thành Công
+                                </span>
+                              );
+                            })()}
                           </td>
 
                           {/* Receipt Button */}

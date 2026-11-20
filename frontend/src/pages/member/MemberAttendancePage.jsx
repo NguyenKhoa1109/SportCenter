@@ -8,7 +8,7 @@ import { TableSkeleton, CardGridSkeleton } from '../../components/common/Skeleto
 import Pagination from '../../components/common/Pagination';
 
 export default function MemberAttendancePage() {
-  const { showToast } = useApp();
+  const { currentUser, showToast } = useApp();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [attendanceData, setAttendanceData] = useState({
@@ -102,7 +102,7 @@ export default function MemberAttendancePage() {
         attendanceRate: data.attendanceRate || 0,
         records: data.records || [],
         courtBookings: data.courtBookings || [],
-        checkIns: data.checkIns || [],
+        checkIns: data.gateCheckIns || data.checkIns || [],
       });
     } catch (err) {
       console.error('Failed to load attendance:', err);
@@ -150,6 +150,14 @@ export default function MemberAttendancePage() {
     const start = (gatePage - 1) * GATES_PER_PAGE;
     return (attendanceData.checkIns || []).slice(start, start + GATES_PER_PAGE);
   }, [attendanceData.checkIns, gatePage]);
+
+  const canDisputeAttendance = (item) => {
+    if (!item?.startTime) return false;
+    const startMs = new Date(item.startTime).getTime();
+    if (Number.isNaN(startMs)) return false;
+    const nowMs = Date.now();
+    return startMs <= nowMs && (nowMs - startMs) <= 7 * 86400000;
+  };
 
   const formatDateTime = (isoStr) => {
     if (!isoStr) return '';
@@ -445,15 +453,17 @@ export default function MemberAttendancePage() {
                               </span>
                             )}
 
-                            <button
-                              type="button"
-                              onClick={() => handleOpenDispute(record)}
-                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-slate-600 text-[11px] font-bold transition cursor-pointer"
-                              title="Gửi khiếu nại nếu bị ghi nhầm điểm danh"
-                            >
-                              <span className="material-symbols-outlined text-[13px]">report_problem</span>
-                              <span>Khiếu nại</span>
-                            </button>
+                            {canDisputeAttendance(record) && (
+                              <button
+                                type="button"
+                                onClick={() => handleOpenDispute(record)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-slate-600 text-[11px] font-bold transition cursor-pointer"
+                                title="Gửi khiếu nại nếu bị ghi nhầm điểm danh"
+                              >
+                                <span className="material-symbols-outlined text-[13px]">report_problem</span>
+                                <span>Khiếu nại</span>
+                              </button>
+                            )}
                           </div>
                         </div>
 
@@ -569,14 +579,16 @@ export default function MemberAttendancePage() {
                           <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${statusClass}`}>
                             {statusLabel}
                           </span>
-                          <button
-                            type="button"
-                            onClick={() => handleOpenDispute(court)}
-                            className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-slate-600 text-[11px] font-bold transition cursor-pointer"
-                          >
-                            <span className="material-symbols-outlined text-[13px]">report_problem</span>
-                            <span>Khiếu nại</span>
-                          </button>
+                          {canDisputeAttendance(court) && (
+                            <button
+                              type="button"
+                              onClick={() => handleOpenDispute(court)}
+                              className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-orange-50 hover:text-orange-600 text-slate-600 text-[11px] font-bold transition cursor-pointer"
+                            >
+                              <span className="material-symbols-outlined text-[13px]">report_problem</span>
+                              <span>Khiếu nại</span>
+                            </button>
+                          )}
                         </div>
                       </div>
                     );
@@ -644,16 +656,26 @@ export default function MemberAttendancePage() {
                             <td className="py-3.5 px-4">
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-100 font-semibold text-slate-700">
                                 <span className="material-symbols-outlined text-[14px] text-slate-500">meeting_room</span>
-                                {item.gate || 'Cổng chính - Turnstile A1'}
+                                {item.location || item.gate || 'Cổng chính'}
                               </span>
                             </td>
                             <td className="py-3.5 px-4 font-medium text-slate-700">
-                              {item.memberName || 'Hội viên'}
+                              {item.memberName || currentUser?.name || 'Hội viên'}
                             </td>
                             <td className="py-3.5 px-4 text-right">
-                              <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800">
-                                Hợp lệ
-                              </span>
+                              {(() => {
+                                const resUpper = String(item.result || 'SUCCESS').toUpperCase();
+                                const isSuccess = resUpper === 'SUCCESS' || resUpper === 'VALID' || resUpper === 'OK';
+                                return (
+                                  <span
+                                    className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold ${
+                                      isSuccess ? 'bg-emerald-100 text-emerald-800' : 'bg-rose-100 text-rose-800'
+                                    }`}
+                                  >
+                                    {isSuccess ? 'Hợp lệ' : (resUpper === 'DENIED' ? 'Từ chối' : item.result)}
+                                  </span>
+                                );
+                              })()}
                             </td>
                           </tr>
                         );

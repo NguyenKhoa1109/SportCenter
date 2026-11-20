@@ -692,10 +692,10 @@ export default function TicketManagementPanel({ mode = 'receptionist' }) {
                   onChange={(e) => setReplyStatus(e.target.value)}
                   className="w-full px-3 py-2.5 rounded-xl border border-slate-300 bg-white text-xs font-bold cursor-pointer"
                 >
-                  <option value="SUBMITTED">Chờ tiếp nhận (SUBMITTED)</option>
-                  <option value="IN_REVIEW">Đang xử lý (IN_REVIEW)</option>
-                  <option value="RESOLVED">Đã giải quyết (RESOLVED)</option>
-                  <option value="REJECTED">Từ chối (REJECTED)</option>
+                  <option value="SUBMITTED">Chờ tiếp nhận</option>
+                  <option value="IN_REVIEW">Đang xử lý</option>
+                  <option value="RESOLVED">Đã giải quyết</option>
+                  <option value="REJECTED">Từ chối</option>
                 </select>
               </div>
 

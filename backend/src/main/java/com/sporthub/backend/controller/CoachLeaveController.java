@@ -22,6 +22,7 @@ import org.springframework.transaction.annotation.Transactional;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -90,8 +91,22 @@ public class CoachLeaveController {
         if (req.startDate() == null || req.endDate() == null || req.reason() == null || req.reason().isBlank()) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng nhập đầy đủ thông tin xin nghỉ.");
         }
+        if (req.startDate().isBefore(LocalDate.now())) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ngày bắt đầu nghỉ không được ở trong quá khứ.");
+        }
         if (req.endDate().isBefore(req.startDate())) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Ngày kết thúc không được trước ngày bắt đầu.");
+        }
+        boolean hasOverlapLeave = leaveRepository.findByCoachIdOrderByCreatedAtDesc(coachId).stream()
+                .filter(existing -> existing.getStatus() != null
+                        && ("PENDING".equalsIgnoreCase(existing.getStatus())
+                                || "APPROVED".equalsIgnoreCase(existing.getStatus())))
+                .anyMatch(existing -> existing.getStartDate() != null && existing.getEndDate() != null
+                        && !existing.getEndDate().isBefore(req.startDate())
+                        && !existing.getStartDate().isAfter(req.endDate()));
+        if (hasOverlapLeave) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                    "Bạn đã có đơn xin nghỉ trùng hoặc chồng lấn trong khoảng thời gian này.");
         }
 
         LocalDateTime startDt = req.startDate().atStartOfDay();
@@ -180,6 +195,7 @@ public class CoachLeaveController {
                 Map<Long, User> sessionCoaches = new LinkedHashMap<>();
                 Set<String> newCoachLabels = new LinkedHashSet<>();
                 Long primaryReplacementId = decision.reassignedCoachId();
+                Map<Long, List<ClassSession>> batchAssignedByCoach = new LinkedHashMap<>();
 
                 for (ClassSession s : sessionsToReassign) {
                     Long targetCoachId = (decision.sessionReassignments() != null
@@ -208,6 +224,18 @@ public class CoachLeaveController {
                             replacementCoach.getUserId(), s.getStartTime(), s.getEndTime())) {
                         throw new ResponseStatusException(HttpStatus.CONFLICT, "HLV thay thế đã có lịch trùng giờ.");
                     }
+                    List<ClassSession> prevAssigned = batchAssignedByCoach.computeIfAbsent(
+                            replacementCoach.getUserId(), k -> new java.util.ArrayList<>());
+                    boolean intraBatchConflict = prevAssigned.stream().anyMatch(prev ->
+                            s.getStartTime() != null && prev.getEndTime() != null
+                                    && s.getEndTime() != null && prev.getStartTime() != null
+                                    && s.getStartTime().isBefore(prev.getEndTime())
+                                    && s.getEndTime().isAfter(prev.getStartTime()));
+                    if (intraBatchConflict) {
+                        throw new ResponseStatusException(HttpStatus.CONFLICT,
+                                "HLV thay thế bị trùng giờ giữa các ca dạy được phân công trong cùng đơn nghỉ.");
+                    }
+                    prevAssigned.add(s);
                     if (availability != null) {
                         availability.requireAvailable(replacementCoach, s.getStartTime(), s.getEndTime());
                     }
@@ -304,6 +332,10 @@ public class CoachLeaveController {
     private CoachLeaveRequestDTO toDTO(
             CoachLeaveRequest r,
             List<CoachLeaveRequestDTO.AffectedSessionDTO> affectedSessions) {
+        String approvedByName = r.getApprovedBy() == null ? null
+                : userRepository.findById(r.getApprovedBy()).map(User::getFullName).orElse(null);
+        String reassignedCoachName = r.getReassignedCoachId() == null ? null
+                : userRepository.findById(r.getReassignedCoachId()).map(User::getFullName).orElse(null);
         return new CoachLeaveRequestDTO(
                 r.getRequestId(),
                 r.getCoachId(),
@@ -317,7 +349,9 @@ public class CoachLeaveController {
                 r.getAffectedBookingsCount(),
                 r.getReassignedCoachId(),
                 r.getCreatedAt(),
-                affectedSessions != null ? affectedSessions : List.of());
+                affectedSessions != null ? affectedSessions : List.of(),
+                approvedByName,
+                reassignedCoachName);
     }
 
     private List<ClassSession> findAffectedSessions(CoachLeaveRequest req, List<ClassSession> allSessions) {
@@ -398,7 +432,7 @@ public class CoachLeaveController {
     private void notifyManagersAboutNewLeaveRequest(User coach, CoachLeaveRequest request) {
         try {
             List<User> managers = userRepository.findAll().stream()
-                    .filter(u -> "MANAGER".equalsIgnoreCase(u.getRole()))
+                    .filter(u -> "MANAGER".equalsIgnoreCase(u.getRole()) || "ADMIN".equalsIgnoreCase(u.getRole()))
                     .filter(u -> "ACTIVE".equalsIgnoreCase(u.getStatus()))
                     .toList();
 

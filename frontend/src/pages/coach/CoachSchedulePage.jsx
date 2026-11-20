@@ -405,7 +405,7 @@ export default function CoachSchedulePage({ initialTab = 'schedule' }) {
             <div className="p-4 bg-blue-50/70 border border-blue-200 rounded-2xl text-xs text-blue-950 flex items-start gap-3">
               <span className="material-symbols-outlined text-blue-600 text-xl shrink-0 mt-0.5">more_time</span>
               <div>
-                <strong className="block font-bold">Chính sách lịch rảnh cố định hàng tuần (BR-12)</strong>
+                <strong className="block font-bold">Chính sách lịch rảnh cố định hàng tuần</strong>
                 <p className="mt-1 leading-relaxed text-blue-900">
                   Đây là mẫu khung giờ cố định hàng tuần (Thứ Hai – Chủ Nhật) để Manager xếp lớp mới và Member đặt lịch tập PT.
                   Các ca đã có lớp được xếp lịch sẵn sẽ không thể tự tắt — nếu cần nghỉ đột xuất, vui lòng gửi{' '}

@@ -6,6 +6,7 @@ import {
   markNotificationRead,
   markAllNotificationsRead,
 } from '../../services/engagementApi';
+import { getMemberNotifications } from '../../services/memberApi';
 
 const SCHEDULE_NOTIFICATION_TYPES = new Set([
   'CLASS_REMINDER',
@@ -46,22 +47,32 @@ export default function MemberNotificationsPage() {
   const [activeFilter, setActiveFilter] = useState('ALL');
   const navigate = useNavigate();
 
-  useEffect(() => {
-    fetchNotifications();
-  }, []);
-
   const fetchNotifications = async () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await getNotifications();
-      if (Array.isArray(data)) {
-        setNotifications(data.map(normalizeNotificationItem));
-      } else if (data && Array.isArray(data.items)) {
-        setNotifications(data.items.map(normalizeNotificationItem));
-      } else {
-        setNotifications([]);
-      }
+      const [generalRes, memberRes] = await Promise.all([
+        getNotifications().catch(() => []),
+        getMemberNotifications().catch(() => []),
+      ]);
+      const generalList = Array.isArray(generalRes)
+        ? generalRes
+        : (generalRes?.items || []);
+      const memberList = Array.isArray(memberRes)
+        ? memberRes
+        : (memberRes?.items || []);
+      const byId = new Map();
+      [...memberList, ...generalList].forEach((raw, idx) => {
+        const normalized = normalizeNotificationItem(raw, idx);
+        const key = normalized.notificationId ?? `${normalized.type}-${normalized.title}-${normalized.createdAt}`;
+        if (!byId.has(key)) byId.set(key, normalized);
+      });
+      const merged = Array.from(byId.values()).sort((a, b) => {
+        const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+        const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+        return tb - ta;
+      });
+      setNotifications(merged);
     } catch (err) {
       console.error('Failed to load notifications:', err);
       setError('Không thể tải danh sách thông báo.');
@@ -69,6 +80,10 @@ export default function MemberNotificationsPage() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    void fetchNotifications();
+  }, []);
 
   const handleMarkAllRead = async () => {
     try {
@@ -97,6 +112,8 @@ export default function MemberNotificationsPage() {
     }
     const type = normalizeNotificationType(item.type);
     if (type === 'SUPPORT') navigate('/member/tickets');
+    else if (type === 'ATTENDANCE') navigate('/member/attendance');
+    else if (type === 'FEEDBACK') navigate('/member/reviews');
     else if (FINANCE_NOTIFICATION_TYPES.has(type)) navigate('/member/transactions');
     else if (SCHEDULE_NOTIFICATION_TYPES.has(type)) navigate('/member/schedule');
     else if (COACH_NOTIFICATION_TYPES.has(type)) navigate('/member/workout-plans');

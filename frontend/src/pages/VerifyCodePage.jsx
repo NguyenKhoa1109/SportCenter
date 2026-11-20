@@ -13,7 +13,8 @@ export default function VerifyCodePage() {
   const queryParams = new URLSearchParams(location.search);
   const initialEmail = location.state?.email || queryParams.get('email') || '';
 
-  const [email] = useState(initialEmail); // Cố định email, không cho sửa
+  const [email, setEmail] = useState(initialEmail);
+  const [isEditingEmail, setIsEditingEmail] = useState(!initialEmail);
 
   // 6 ô số OTP
   const [otpDigits, setOtpDigits] = useState(['', '', '', '', '', '']);
@@ -326,16 +327,38 @@ export default function VerifyCodePage() {
           {/* Content */}
           <div className="p-6 sm:p-8 space-y-6">
 
-            {/* Email Identification Info Box - CỐ ĐỊNH */}
+            {/* Email Identification Info Box */}
             <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex items-center gap-3">
-              <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
+              <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold shrink-0">
                 <span className="material-symbols-outlined text-[20px]">mark_email_read</span>
               </div>
-              <div>
-                <p className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Email nhận mã</p>
-                <p className="text-xs sm:text-sm font-black text-slate-900">
-                  {email || 'Chưa có email'}
-                </p>
+              <div className="flex-1 min-w-0 space-y-1">
+                <div className="flex items-center justify-between gap-2">
+                  <p className="text-[11px] text-slate-500 uppercase tracking-wider font-bold">Email nhận mã</p>
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingEmail((prev) => !prev)}
+                    className="text-[11px] font-bold text-orange-600 hover:underline cursor-pointer"
+                  >
+                    {isEditingEmail ? 'Xong' : 'Thay đổi'}
+                  </button>
+                </div>
+                {isEditingEmail ? (
+                  <input
+                    type="email"
+                    value={email}
+                    onChange={(e) => {
+                      setEmail(e.target.value);
+                      setErrorMessage('');
+                    }}
+                    placeholder="Nhập email tài khoản (vd: name@example.com)"
+                    className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-bold text-slate-900 outline-none focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20"
+                  />
+                ) : (
+                  <p className="text-xs sm:text-sm font-black text-slate-900 break-all">
+                    {email || 'Chưa có email'}
+                  </p>
+                )}
               </div>
             </div>
 

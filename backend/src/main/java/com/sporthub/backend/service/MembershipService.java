@@ -117,7 +117,7 @@ public class MembershipService {
             auditLogService.logSuccess(
                 "MEMBERSHIP_APPROVED",
                 String.format("Manager #%d", managerId),
-                membership.getMembershipId(),
+                managerId,
                 String.format("Approved membership #%d (Package: %s) for user #%d. Quota granted: %d sessions",
                         membership.getMembershipId(),
                         pkg.getName(),
@@ -172,7 +172,7 @@ public class MembershipService {
             auditLogService.logSuccess(
                 "MEMBERSHIP_REJECTED",
                 String.format("Manager #%d", managerId),
-                membership.getMembershipId(),
+                managerId,
                 String.format("Rejected membership #%d (Package: %s) for user #%d. Reason: %s. 100%% refund auto-created.",
                         membership.getMembershipId(),
                         pkg.getName(),

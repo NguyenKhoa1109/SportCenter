@@ -45,6 +45,9 @@ test.describe('SUITE 2: Xác Thực, Phân Quyền Người Dùng & Hồ Sơ Cá
 
       await adminPage.getByRole('button', { name: /Thêm người dùng mới/i }).click();
       await adminPage.locator('#create-user-role').selectOption('COACH');
+      const firstSportCheckbox = adminPage.locator('input[type="checkbox"]').first();
+      await expect(firstSportCheckbox).toBeVisible({ timeout: 5000 });
+      await firstSportCheckbox.check();
       await adminPage.getByPlaceholder('Ví dụ: Trần Văn Nam').fill(staffName);
       await adminPage.getByPlaceholder('0912 345 678').fill(staffPhone);
       await adminPage.getByPlaceholder('user@example.com').fill(staffEmail);

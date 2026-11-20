@@ -451,7 +451,7 @@ export default function CoachProfilePage() {
                     <span className="material-symbols-outlined text-[18px] text-amber-500">star</span>
                   </div>
                   <div className="text-xl font-black text-amber-900 flex items-center gap-1">
-                    {coachData?.averageRating ? coachData.averageRating.toFixed(1) : '5.0'}
+                    {(coachData?.totalReviewsCount ?? 0) > 0 && coachData?.averageRating ? Number(coachData.averageRating).toFixed(1) : '0.0'}
                     <span className="text-xs font-bold text-amber-600">/ 5.0</span>
                   </div>
                 </div>
@@ -507,7 +507,7 @@ export default function CoachProfilePage() {
                       <div className="flex items-center justify-between">
                         <span className="font-bold text-slate-800">{rev.memberName}</span>
                         <div className="flex items-center text-amber-500 text-[13px]">
-                          {'★'.repeat(rev.rating || 5)}
+                          {'★'.repeat(Math.max(0, Math.min(5, Math.round(rev.rating || 0))))}
                         </div>
                       </div>
                       <p className="text-slate-600 text-[11px] italic line-clamp-2">"{rev.comment}"</p>
@@ -821,19 +821,19 @@ export default function CoachProfilePage() {
                 <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 flex flex-col sm:flex-row items-center justify-between gap-4">
                   <div className="flex items-center gap-4">
                     <div className="text-4xl font-black text-amber-600">
-                      {coachData?.averageRating ? coachData.averageRating.toFixed(1) : '5.0'}
+                      {(coachData?.totalReviewsCount ?? 0) > 0 && coachData?.averageRating ? Number(coachData.averageRating).toFixed(1) : '0.0'}
                     </div>
                     <div>
                       <div className="flex items-center text-amber-500 text-base">
-                        {'★'.repeat(Math.round(coachData?.averageRating || 5))}
+                        {(coachData?.totalReviewsCount ?? 0) > 0 && coachData?.averageRating ? '★'.repeat(Math.round(coachData.averageRating)) : '☆☆☆☆☆'}
                       </div>
                       <p className="text-xs text-slate-600 font-medium mt-0.5">
                         Dựa trên <strong>{coachData?.totalReviewsCount || 0}</strong> lượt đánh giá từ học viên
                       </p>
                     </div>
                   </div>
-                  <div className="text-xs text-emerald-700 font-bold bg-white px-3 py-1.5 rounded-xl border border-emerald-200 shadow-xs">
-                    ✓ Điểm uy tín huấn luyện: 100% Đạt Chuẩn
+                  <div className={`text-xs font-bold bg-white px-3 py-1.5 rounded-xl border shadow-xs ${(coachData?.totalReviewsCount ?? 0) > 0 ? 'text-emerald-700 border-emerald-200' : 'text-slate-500 border-slate-200'}`}>
+                    {(coachData?.totalReviewsCount ?? 0) > 0 ? `✓ Điểm uy tín huấn luyện: ${Number(coachData.averageRating || 0).toFixed(1)}/5.0` : 'Chưa có lượt đánh giá'}
                   </div>
                 </div>
 

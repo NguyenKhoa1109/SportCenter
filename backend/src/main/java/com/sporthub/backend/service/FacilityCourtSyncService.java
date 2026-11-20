@@ -471,8 +471,16 @@ public class FacilityCourtSyncService {
      */
     @Transactional
     public void syncFromMaintenanceDelete(Long courtId) {
+        syncFromMaintenanceDelete(courtId, false);
+    }
+
+    @Transactional
+    public void syncFromMaintenanceDelete(Long courtId, boolean deletedWindowWasLocker) {
         if (courtId == null) return;
+        if (deletedWindowWasLocker) {
+            courtsLockedByMaintenance.add(courtId);
+        }
         syncCourtMaintenanceStatus(courtId);
-        log.info("Synced maintenance delete for court {}", courtId);
+        log.info("Synced maintenance delete for court {} (wasLocker={})", courtId, deletedWindowWasLocker);
     }
 }

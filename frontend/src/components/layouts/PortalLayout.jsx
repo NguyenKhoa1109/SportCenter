@@ -122,24 +122,37 @@ export default function PortalLayout({
   }, [searchOpen]);
 
   const fetchLiveNotifications = useCallback(async () => {
+    let generalList = [];
     try {
       const data = await getNotifications();
-      const parsed = parseNotifications(data);
-      if (parsed.length > 0) {
-        setLiveNotifications(parsed);
-        return;
-      }
+      generalList = parseNotifications(data);
     } catch {
-      // If general notifications fails, try fallback for member
+      // ignore if endpoint fails for role
     }
 
     if (role === 'member') {
       try {
         const memberData = await getMemberNotifications();
-        setLiveNotifications(parseNotifications(memberData));
+        const memberList = parseNotifications(memberData);
+        const byId = new Map();
+        [...memberList, ...generalList].forEach((n) => {
+          const key = n.id ?? `${n.title}-${n.createdAt}`;
+          if (!byId.has(key)) byId.set(key, n);
+        });
+        const merged = Array.from(byId.values()).sort((a, b) => {
+          const ta = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+          const tb = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+          return tb - ta;
+        });
+        setLiveNotifications(merged);
+        return;
       } catch {
-        // keep existing
+        // fallback to generalList below
       }
+    }
+
+    if (generalList.length > 0) {
+      setLiveNotifications(generalList);
     }
   }, [role]);
 
@@ -457,7 +470,7 @@ export default function PortalLayout({
                             }
                             if (item.link) {
                               navigate(item.link);
-                            } else if (roleKey === 'member' && String(item.type || '').toUpperCase() === 'SUPPORT') {
+                            } else if (role === 'member' && String(item.type || '').toUpperCase() === 'SUPPORT') {
                               navigate('/member/tickets');
                             } else if (inboxRoute) {
                               navigate(inboxRoute);

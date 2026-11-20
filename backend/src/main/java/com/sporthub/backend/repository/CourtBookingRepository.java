@@ -45,7 +45,7 @@ public interface CourtBookingRepository extends JpaRepository<CourtBooking, Long
 
     @Query("""
             select b from CourtBooking b where b.courtId = :courtId
-              and (b.status = :status or (:status = 'CONFIRMED' and b.status = 'CHECKED_IN'))
+              and (b.status = :status or (:status = 'CONFIRMED' and b.status IN ('PENDING', 'CHECKED_IN')))
               and b.startTime between :from and :to
             """)
     List<CourtBooking> findByCourtIdAndStatusAndStartTimeBetween(

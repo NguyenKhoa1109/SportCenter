@@ -51,12 +51,100 @@ function ErrorNotice({ error }) {
   );
 }
 
+function toLocalDateStr(dateObj) {
+  const y = dateObj.getFullYear();
+  const m = String(dateObj.getMonth() + 1).padStart(2, '0');
+  const d = String(dateObj.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
+function getCoachCandidateSlotsForDate(availabilityJson, selectedDate) {
+  const defaultSlots = ['08:00', '10:00', '14:00', '16:00', '18:00', '19:30'];
+  const now = new Date();
+  const todayStr = toLocalDateStr(now);
+  const filterPast = (slots) => {
+    if (selectedDate !== todayStr) return slots;
+    const nowMin = now.getHours() * 60 + now.getMinutes();
+    return slots.filter((slot) => {
+      const [h, m] = slot.split(':').map(Number);
+      return h * 60 + m > nowMin + 15;
+    });
+  };
+  if (!availabilityJson || availabilityJson.trim() === '{}' || availabilityJson.trim() === '[]') {
+    return filterPast(defaultSlots);
+  }
+  try {
+    const parsed = JSON.parse(availabilityJson);
+    if (!Array.isArray(parsed) || parsed.length === 0) {
+      return filterPast(defaultSlots);
+    }
+    const dayNames = ['SUNDAY', 'MONDAY', 'TUESDAY', 'WEDNESDAY', 'THURSDAY', 'FRIDAY', 'SATURDAY'];
+    const targetDate = new Date(`${selectedDate}T00:00:00`);
+    const targetDay = dayNames[targetDate.getDay()];
+    const dayCfg = parsed.find((d) => String(d.day || '').toUpperCase() === targetDay);
+    if (!dayCfg) return [];
+    const openSlots = defaultSlots.filter((slot) => {
+      const hour = Number(slot.split(':')[0]);
+      const shift = hour < 12 ? 'morning' : hour < 18 ? 'afternoon' : 'evening';
+      return Boolean(dayCfg[shift]);
+    });
+    return filterPast(openSlots);
+  } catch {
+    return filterPast(defaultSlots);
+  }
+}
+
 function BookingHome() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  const preselectSlug = params.get('sportSlug') || '';
+  const preselectSportId = params.get('sportId') || '';
+  const [matchedSport, setMatchedSport] = useState(null);
+
+  useEffect(() => {
+    if (!preselectSlug && !preselectSportId) {
+      setMatchedSport(null);
+      return;
+    }
+    let current = true;
+    getBookingSports()
+      .then((sports) => {
+        if (!current || !Array.isArray(sports)) return;
+        const found = sports.find(
+          (s) =>
+            (preselectSportId && String(s.sportId) === String(preselectSportId)) ||
+            (preselectSlug && (s.slug === preselectSlug || s.code === preselectSlug)),
+        );
+        if (found) setMatchedSport(found);
+      })
+      .catch(() => {});
+    return () => {
+      current = false;
+    };
+  }, [preselectSlug, preselectSportId]);
+
+  const buildOptionPath = (type) => {
+    if (!matchedSport?.sportId) return `/member/book/${type}/sports`;
+    if (type === 'court') return `/member/book/courts/${matchedSport.sportId}`;
+    if (type === 'class') return `/member/book/classes/${matchedSport.sportId}`;
+    return `/member/book/coaches/${matchedSport.sportId}`;
+  };
+
   return (
     <PageFrame
       title="Đặt Lịch & Đăng Ký Dịch Vụ"
       description="Chọn thuê sân chơi thể thao theo khung giờ hoặc đăng ký lớp huấn luyện cùng HLV chuyên nghiệp."
     >
+      {matchedSport && (
+        <div className="rounded-2xl border border-orange-200 bg-orange-50 px-4 py-3 text-xs font-semibold text-orange-900 flex flex-wrap items-center justify-between gap-2">
+          <span>
+            Đang chọn nhanh cho bộ môn: <strong className="font-black">{matchedSport.name}</strong>
+          </span>
+          <Link to="/member/book" className="text-orange-700 font-bold underline hover:text-orange-900">
+            Chọn bộ môn khác
+          </Link>
+        </div>
+      )}
       <div className="grid gap-6 md:grid-cols-3">
         {[
           {
@@ -86,7 +174,7 @@ function BookingHome() {
         ].map((option) => (
           <Link
             key={option.type}
-            to={`/member/book/${option.type}/sports`}
+            to={buildOptionPath(option.type)}
             className="group relative flex flex-col justify-between overflow-hidden rounded-2xl border border-slate-200 bg-white p-7 shadow-sm transition hover:-translate-y-1 hover:border-orange-400 hover:shadow-md"
           >
             <div>
@@ -653,84 +741,66 @@ function ClassPicker({ sportId }) {
   );
 }
 
-function CoachPicker({ _sportId }) {
+function CoachPicker({ sportId }) {
   const navigate = useNavigate();
-  const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().slice(0, 10));
-
-  const mockCoaches = [
-    {
-      coachId: 101,
-      name: 'Nguyễn Văn Hùng',
-      title: 'HLV Cá Nhân Thể Hình & Cầu Lông Cấp Cao',
-      certifications: 'NASM-CPT, Bằng ĐH TDTT Chuyên Sâu',
-      hourlyRate: 350000,
-      rating: 4.9,
-      reviewCount: 38,
-      specialties: ['Tăng cơ giảm mỡ', 'Kỹ thuật smash', 'Thể lực nâng cao'],
-      availableSlots: ['08:00', '10:00', '14:30', '16:00', '18:00'],
-      avatar: 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=150&auto=format&fit=crop&q=80',
-    },
-    {
-      coachId: 102,
-      name: 'Phạm Thị Lan',
-      title: 'HLV Quốc Tế Bơi Lội & Pickleball',
-      certifications: 'FINA Certified Coach, Cử nhân TDTT',
-      hourlyRate: 400000,
-      rating: 5.0,
-      reviewCount: 42,
-      specialties: ['Bơi ếch/sải chuẩn thi đấu', 'Pickleball căn bản', 'Phục hồi thể lực'],
-      availableSlots: ['09:00', '11:00', '15:00', '17:00'],
-      avatar: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80',
-    },
-    {
-      coachId: 103,
-      name: 'Lê Hoàng Minh',
-      title: 'HLV Quần Vợt & Thể Lực Chuyên Nghiệp',
-      certifications: 'ITF Level 2, Chứng chỉ PT ACE Hoa Kỳ',
-      hourlyRate: 450000,
-      rating: 4.8,
-      reviewCount: 29,
-      specialties: ['Giao bóng uy lực', 'Footwork quần vợt', 'Cardio đốt mỡ'],
-      availableSlots: ['07:30', '09:30', '16:30', '19:00'],
-      avatar: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=150&auto=format&fit=crop&q=80',
-    },
-  ];
-
-  const [coachesList, setCoachesList] = useState(mockCoaches);
+  const [selectedDate, setSelectedDate] = useState(() => toLocalDateStr(new Date()));
+  const [coachesList, setCoachesList] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     let current = true;
+    setLoading(true);
+    setError('');
     getBookingCoaches()
       .then((data) => {
-        if (current && Array.isArray(data) && data.length > 0) {
-          const mapped = data.map((c, idx) => ({
-            coachId: c.coachId,
-            name: c.fullName,
-            title: c.specialty || 'HLV Cá Nhân Chuyên Nghiệp',
-            certifications: c.bio || 'Chứng chỉ Quốc tế Chuyên sâu',
-            hourlyRate: 250000 + (idx % 3) * 50000,
-            rating: 4.9,
-            reviewCount: 25 + idx * 7,
-            specialties: c.sportsTaught?.length ? c.sportsTaught : ['Thể lực', 'Kỹ thuật chuyên sâu'],
-            availableSlots: ['08:00', '10:00', '14:30', '16:00', '18:00'],
-            avatar: c.avatar || (idx % 2 === 0 ? 'https://images.unsplash.com/photo-1571019614242-c5c5dee9f50b?w=150&auto=format&fit=crop&q=80' : 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?w=150&auto=format&fit=crop&q=80'),
-          }));
-          setCoachesList(mapped);
+        if (!current) return;
+        const rows = Array.isArray(data) ? data : [];
+        const filtered = sportId
+          ? rows.filter((c) => {
+              if (Array.isArray(c.sportIds) && c.sportIds.length > 0) {
+                return c.sportIds.some((id) => String(id) === String(sportId));
+              }
+              return true;
+            })
+          : rows;
+        const mapped = filtered.map((c) => ({
+          coachId: c.coachId,
+          name: c.fullName,
+          title: c.specialty || 'HLV Cá Nhân Chuyên Nghiệp',
+          certifications: c.bio || 'Huấn luyện viên chính thức tại F Sport Center',
+          hourlyRate: Number(c.hourlyRate) || 250000,
+          rating: Number(c.averageRating) || 0,
+          reviewCount: Number(c.reviewCount) || 0,
+          specialties: c.sportsTaught?.length ? c.sportsTaught : ['Thể lực', 'Kỹ thuật chuyên sâu'],
+          availabilityJson: c.availabilityJson || '{}',
+          avatar: c.avatar || '',
+        }));
+        setCoachesList(mapped);
+      })
+      .catch((requestError) => {
+        if (current) {
+          setError(requestError.message || 'Không thể tải danh sách huấn luyện viên.');
+          setCoachesList([]);
         }
       })
-      .catch(() => {});
+      .finally(() => {
+        if (current) setLoading(false);
+      });
     return () => { current = false; };
-  }, []);
+  }, [sportId]);
 
   const handleSelectSlot = (coach, timeSlot) => {
-    const [hh, mm] = timeSlot.split(':');
-    const startObj = new Date(`${selectedDate}T${hh}:${mm}:00`);
-    const endObj = new Date(startObj.getTime() + 60 * 60 * 1000); // 60 mins
+    const [hh, mm] = timeSlot.split(':').map(Number);
+    const hhPad = String(hh).padStart(2, '0');
+    const mmPad = String(mm).padStart(2, '0');
+    const startLocal = `${selectedDate}T${hhPad}:${mmPad}:00`;
+    const endDateObj = new Date(`${selectedDate}T${hhPad}:${mmPad}:00`);
+    endDateObj.setHours(endDateObj.getHours() + 1);
+    const endLocal = `${toLocalDateStr(endDateObj)}T${String(endDateObj.getHours()).padStart(2, '0')}:${String(endDateObj.getMinutes()).padStart(2, '0')}:00`;
     const query = new URLSearchParams({
-      startTime: startObj.toISOString(),
-      endTime: endObj.toISOString(),
-      coachName: coach.name,
-      coachRate: coach.hourlyRate,
+      startTime: startLocal,
+      endTime: endLocal,
     });
     navigate(`/member/book/checkout/pt/${coach.coachId}?${query}`);
   };
@@ -740,11 +810,13 @@ function CoachPicker({ _sportId }) {
       title="Chọn Huấn Luyện Viên Cá Nhân (PT 1-1)"
       description="Bước 2 trong 3 · Lựa chọn HLV phù hợp theo bảng giá, chứng chỉ chuyên môn và chọn giờ tập thuận tiện."
     >
+      <ErrorNotice error={error} />
       <div className="flex flex-wrap items-center gap-2 mb-6">
         <span className="text-xs font-bold text-slate-600">Chọn ngày tập:</span>
         {[0, 1, 2, 3, 4, 5, 6].map((offset) => {
-          const d = new Date(Date.now() + offset * 86400000);
-          const dateStr = d.toISOString().slice(0, 10);
+          const d = new Date();
+          d.setDate(d.getDate() + offset);
+          const dateStr = toLocalDateStr(d);
           return (
             <button
               key={dateStr}
@@ -762,64 +834,101 @@ function CoachPicker({ _sportId }) {
         })}
       </div>
 
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        {coachesList.map((coach) => (
-          <div key={coach.coachId} className="flex flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition">
-            <div>
-              <div className="flex items-center gap-4">
-                <img
-                  src={coach.avatar}
-                  alt={coach.name}
-                  className="w-16 h-16 rounded-2xl object-cover border border-slate-100 shadow-sm"
-                />
+      {loading ? (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {[1, 2, 3].map((i) => (
+            <div key={i} className="animate-pulse rounded-3xl border border-slate-200 bg-white p-6 space-y-4">
+              <div className="h-16 w-16 rounded-2xl bg-slate-100" />
+              <div className="h-4 w-2/3 rounded bg-slate-100" />
+              <div className="h-20 w-full rounded bg-slate-100" />
+            </div>
+          ))}
+        </div>
+      ) : coachesList.length === 0 ? (
+        <div className="rounded-2xl border border-slate-200 bg-white p-12 text-center text-sm text-slate-500">
+          Hiện chưa có huấn luyện viên nào phụ trách bộ môn này. Vui lòng chọn bộ môn khác hoặc đăng ký lớp học theo lịch.
+        </div>
+      ) : (
+        <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+          {coachesList.map((coach) => {
+            const candidateSlots = getCoachCandidateSlotsForDate(coach.availabilityJson, selectedDate);
+            return (
+              <div key={coach.coachId} className="flex flex-col justify-between rounded-3xl border border-slate-200 bg-white p-6 shadow-sm hover:shadow-md transition">
                 <div>
-                  <h3 className="font-bold text-slate-900 text-base">{coach.name}</h3>
-                  <p className="text-xs text-orange-600 font-semibold">{coach.title}</p>
-                  <div className="flex items-center gap-1 text-[11px] text-amber-500 mt-1 font-bold">
-                    <span className="material-symbols-outlined text-[14px]">star</span>
-                    <span>{coach.rating}</span>
-                    <span className="text-slate-400 font-normal">({coach.reviewCount} đánh giá)</span>
+                  <div className="flex items-center gap-4">
+                    {coach.avatar ? (
+                      <img
+                        src={coach.avatar}
+                        alt={coach.name}
+                        className="w-16 h-16 rounded-2xl object-cover border border-slate-100 shadow-sm"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-2xl bg-slate-900 text-orange-400 font-black flex items-center justify-center text-lg border border-slate-200">
+                        {(coach.name || 'HLV').split(/\s+/).map((p) => p[0]).slice(-2).join('').toUpperCase()}
+                      </div>
+                    )}
+                    <div>
+                      <h3 className="font-bold text-slate-900 text-base">{coach.name}</h3>
+                      <p className="text-xs text-orange-600 font-semibold">{coach.title}</p>
+                      <div className="flex items-center gap-1 text-[11px] text-amber-500 mt-1 font-bold">
+                        <span className="material-symbols-outlined text-[14px]">star</span>
+                        {coach.reviewCount > 0 ? (
+                          <>
+                            <span>{coach.rating.toFixed(1)}</span>
+                            <span className="text-slate-400 font-normal">({coach.reviewCount} đánh giá)</span>
+                          </>
+                        ) : (
+                          <span className="text-slate-400 font-normal">Chưa có đánh giá</span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 p-3 rounded-xl bg-slate-50 text-xs space-y-1.5">
+                    <div className="text-slate-500">
+                      <span className="font-semibold text-slate-700">Giới thiệu:</span> {coach.certifications}
+                    </div>
+                    <div className="flex flex-wrap gap-1 pt-1">
+                      {coach.specialties.map((spec, i) => (
+                        <span key={i} className="px-2 py-0.5 rounded bg-orange-100/70 text-orange-800 text-[10px] font-semibold">
+                          {spec}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-baseline justify-between border-b border-slate-100 pb-3">
+                    <span className="text-xs text-slate-500">Mức phí niêm yết:</span>
+                    <span className="text-base font-extrabold text-orange-600">{formatMoney(coach.hourlyRate)} / buổi</span>
+                  </div>
+
+                  <div className="mt-4">
+                    <span className="text-xs font-bold text-slate-700 block mb-2">
+                      Khung giờ dự kiến {new Date(`${selectedDate}T00:00:00`).toLocaleDateString('vi-VN')}:
+                    </span>
+                    {candidateSlots.length === 0 ? (
+                      <p className="text-xs text-slate-400 italic">HLV không mở ca rảnh trong ngày đã chọn.</p>
+                    ) : (
+                      <div className="grid grid-cols-3 gap-2">
+                        {candidateSlots.map((slot) => (
+                          <button
+                            key={slot}
+                            type="button"
+                            onClick={() => handleSelectSlot(coach, slot)}
+                            className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-orange-500 hover:text-white hover:border-orange-500 transition text-center cursor-pointer"
+                          >
+                            {slot}
+                          </button>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               </div>
-
-              <div className="mt-4 p-3 rounded-xl bg-slate-50 text-xs space-y-1.5">
-                <div className="text-slate-500">
-                  <span className="font-semibold text-slate-700">Chứng chỉ:</span> {coach.certifications}
-                </div>
-                <div className="flex flex-wrap gap-1 pt-1">
-                  {coach.specialties.map((spec, i) => (
-                    <span key={i} className="px-2 py-0.5 rounded bg-orange-100/70 text-orange-800 text-[10px] font-semibold">
-                      {spec}
-                    </span>
-                  ))}
-                </div>
-              </div>
-
-              <div className="mt-4 flex items-baseline justify-between border-b border-slate-100 pb-3">
-                <span className="text-xs text-slate-500">Mức phí niêm yết:</span>
-                <span className="text-base font-extrabold text-orange-600">{formatMoney(coach.hourlyRate)} / buổi</span>
-              </div>
-
-              <div className="mt-4">
-                <span className="text-xs font-bold text-slate-700 block mb-2">Giờ trống {new Date(selectedDate).toLocaleDateString('vi-VN')}:</span>
-                <div className="grid grid-cols-3 gap-2">
-                  {coach.availableSlots.map((slot) => (
-                    <button
-                      key={slot}
-                      type="button"
-                      onClick={() => handleSelectSlot(coach, slot)}
-                      className="px-2 py-1.5 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-orange-500 hover:text-white hover:border-orange-500 transition text-center cursor-pointer"
-                    >
-                      {slot}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            </div>
-          </div>
-        ))}
-      </div>
+            );
+          })}
+        </div>
+      )}
     </PageFrame>
   );
 }
@@ -831,8 +940,6 @@ function CheckoutPage({ bookingType, itemId }) {
   const searchParams = new URLSearchParams(location.search);
   const startTime = searchParams.get('startTime');
   const endTime = searchParams.get('endTime');
-  const coachNameQuery = searchParams.get('coachName');
-  const coachRateQuery = searchParams.get('coachRate');
 
   const [quote, setQuote] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -913,21 +1020,7 @@ function CheckoutPage({ bookingType, itemId }) {
       })
       .catch((requestError) => {
         if (current) {
-          if (bookingType.toLowerCase() === 'pt') {
-            setQuote({
-              bookingType: 'PT',
-              itemName: `Huấn Luyện 1-1: ${coachNameQuery || 'HLV Cá Nhân'}`,
-              sportName: 'Personal Training & Thể Lực',
-              location: 'Khu Gym PT & Sân Chuyên Dụng',
-              startTime: startTime || new Date().toISOString(),
-              endTime: endTime || new Date(Date.now() + 3600000).toISOString(),
-              amount: Number(coachRateQuery) || 350000,
-              originalAmount: Number(coachRateQuery) || 350000,
-              discountAmount: 0,
-            });
-          } else {
-            setError(requestError.message || 'Không thể xác nhận giá và lịch booking.');
-          }
+          setError(requestError.message || 'Không thể xác nhận giá và lịch booking.');
         }
       })
       .finally(() => {
@@ -936,7 +1029,7 @@ function CheckoutPage({ bookingType, itemId }) {
     return () => {
       current = false;
     };
-  }, [bookingType, coachNameQuery, coachRateQuery, endTime, itemId, startTime]);
+  }, [bookingType, endTime, itemId, startTime]);
 
   // Handle Voucher Application (MGR-18)
   const applyVoucher = async () => {
@@ -1160,16 +1253,6 @@ function CheckoutPage({ bookingType, itemId }) {
               </div>
             )}
 
-            {paymentMode === 'RETAIL' && appliedVoucher?.discountType === 'EXTEND_DURATION' && (
-              <div className="flex justify-between items-center rounded-lg bg-blue-50 px-3 py-1.5 text-xs text-blue-800">
-                <span className="flex items-center gap-1.5 font-semibold">
-                  <span className="material-symbols-outlined text-sm text-blue-600">more_time</span>
-                  Ưu đãi Voucher ({appliedVoucher.code}):
-                </span>
-                <strong className="font-bold text-blue-700">Tặng thêm 30 ngày thời hạn gói</strong>
-              </div>
-            )}
-
             <div className="flex justify-between gap-4 border-t border-slate-200 pt-3">
               <dt className="font-bold text-slate-800">Tổng thanh toán</dt>
               <dd className="text-xl font-extrabold text-orange-600">{formatMoney(finalPrice)}</dd>
@@ -1258,7 +1341,7 @@ function CheckoutPage({ bookingType, itemId }) {
             <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
               <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                 <span className="material-symbols-outlined text-[16px] text-orange-500">confirmation_number</span>
-                Mã Giảm Giá / Voucher (MGR-18)
+                Mã Giảm Giá / Voucher
               </label>
 
               {appliedVoucher ? (
@@ -1310,8 +1393,6 @@ function CheckoutPage({ bookingType, itemId }) {
             <PaymentMethodSelector
               selectedMethod={paymentMethod}
               onChange={setPaymentMethod}
-              amount={finalPrice}
-              transferMemo={`VQR${quote.bookingType === 'COURT' ? 'CRT' : 'CLS'}${itemId}`}
             />
           )}
 

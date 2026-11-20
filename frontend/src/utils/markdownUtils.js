@@ -141,6 +141,23 @@ function parseExerciseLine(line) {
   };
 }
 
+function cleanMarkdownText(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .replace(/^#{1,6}\s*(.+)$/gm, '$1')
+    .replace(/^([-*]{3,}|_{3,})$/gm, '')
+    .replace(/\*\*\*([^*]+?)\*\*\*/g, '$1')
+    .replace(/\*\*([^*]+?)\*\*/g, '$1')
+    .replace(/___([^_]+?)___/g, '$1')
+    .replace(/__([^_]+?)__/g, '$1')
+    .replace(/(^|\s)\*([^*\s][^*]*?)\*($|\s)/g, '$1$2$3')
+    .replace(/(^|\s)_([^_\s][^_]*?)_($|\s)/g, '$1$2$3')
+    .replace(/`([^`]+?)`/g, '$1')
+    .replace(/^(\s*)[*+]\s+/gm, '$1- ')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
 export function parseAiWorkoutPlan(rawText, fallback = {}) {
   const cleaned = cleanMarkdownText(rawText);
   if (!cleaned) {

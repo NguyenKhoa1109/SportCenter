@@ -276,7 +276,7 @@ export default function AdminStaffApprovalsPage() {
         method: 'POST',
         body: JSON.stringify({
           approved: false,
-          decisionNote: 'Lịch giảng dạy quá kín, không đủ Coach thay thế (BR-16)',
+          decisionNote: 'Lịch giảng dạy quá kín, không đủ Coach thay thế',
         }),
       });
       showToast('Đã từ chối đơn nghỉ', `Đã gửi thông báo từ chối tới ${req.coachName}.`, 'warning');
@@ -324,7 +324,7 @@ export default function AdminStaffApprovalsPage() {
   };
 
   const pendingStaffCount = registrations.length;
-  const pendingMemCount = pendingMemberships.filter((m) => m.status === 'PENDING_APPROVAL').length;
+  const pendingMemCount = pendingMemberships.filter((m) => ['PENDING_APPROVAL', 'PENDING'].includes(m.status)).length;
   const pendingLeaveCount = coachLeaveRequests.filter((r) => r.status === 'PENDING').length;
   const pendingRefundCount = refundRequests.filter((r) => ['PENDING_APPROVAL', 'PENDING'].includes(r.status)).length;
 
@@ -510,7 +510,7 @@ export default function AdminStaffApprovalsPage() {
                   </thead>
                   <tbody className="divide-y divide-slate-100 font-medium">
                     {pendingMemberships.map((mem) => {
-                      const isPending = mem.status === 'PENDING_APPROVAL';
+                      const isPending = ['PENDING_APPROVAL', 'PENDING'].includes(mem.status);
                       return (
                         <tr key={mem.membershipId} className="hover:bg-slate-50">
                           <td className="px-5 py-4">
@@ -632,7 +632,7 @@ export default function AdminStaffApprovalsPage() {
                           </td>
                           <td className="px-5 py-4">
                             <span className="font-bold text-slate-900 block">
-                              {req.leaveType === 'SICK_LEAVE' ? 'Nghỉ ốm / Y tế' : 'Việc cá nhân'}
+                              {req.leaveType === 'SICK_LEAVE' ? 'Nghỉ ốm / Y tế' : req.leaveType === 'SCHEDULE_CHANGE' ? 'Đổi ca dạy' : 'Việc cá nhân'}
                             </span>
                             <span className="text-slate-600">{req.startDate} → {req.endDate}</span>
                           </td>

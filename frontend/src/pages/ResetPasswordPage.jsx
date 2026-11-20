@@ -23,7 +23,7 @@ export default function ResetPasswordPage() {
   const [isSuccess, setIsSuccess] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // Kiểm tra độ mạnh mật khẩu theo thời gian thực
+  // Kiểm tra độ mạnh mật khẩu theo thời gian thực (khớp backend AuthService)
   const getPasswordStrength = (pass) => {
     if (!pass) return { score: 0, label: 'Chưa nhập', color: 'bg-slate-200', width: '0%' };
     let score = 0;
@@ -31,11 +31,12 @@ export default function ResetPasswordPage() {
     if (/[A-Z]/.test(pass)) score += 1;
     if (/[a-z]/.test(pass)) score += 1;
     if (/[0-9]/.test(pass)) score += 1;
+    if (/[@$!%*?&#]/.test(pass)) score += 1;
 
-    if (score <= 1) return { score: 1, label: 'Yếu', color: 'bg-red-500', width: '25%' };
-    if (score === 2) return { score: 2, label: 'Trung bình', color: 'bg-amber-500', width: '50%' };
-    if (score === 3) return { score: 3, label: 'Khá mạnh', color: 'bg-blue-500', width: '75%' };
-    return { score: 4, label: 'Rất mạnh (Tối ưu)', color: 'bg-emerald-500', width: '100%' };
+    if (score <= 2) return { score, label: 'Yếu', color: 'bg-red-500', width: '25%' };
+    if (score === 3) return { score, label: 'Trung bình', color: 'bg-amber-500', width: '55%' };
+    if (score === 4) return { score, label: 'Khá mạnh', color: 'bg-blue-500', width: '80%' };
+    return { score, label: 'Rất mạnh (Tối ưu)', color: 'bg-emerald-500', width: '100%' };
   };
 
   const strength = getPasswordStrength(newPassword);
@@ -271,6 +272,7 @@ export default function ResetPasswordPage() {
                     />
                     <button
                       type="button"
+                      aria-label={showNew ? 'Ẩn mật khẩu mới' : 'Hiện mật khẩu mới'}
                       onClick={() => setShowNew(!showNew)}
                       className="absolute right-3.5 text-slate-400 hover:text-slate-700 transition-colors flex items-center cursor-pointer"
                     >
@@ -332,6 +334,7 @@ export default function ResetPasswordPage() {
                     />
                     <button
                       type="button"
+                      aria-label={showConfirm ? 'Ẩn xác nhận mật khẩu' : 'Hiện xác nhận mật khẩu'}
                       onClick={() => setShowConfirm(!showConfirm)}
                       className="absolute right-3.5 text-slate-400 hover:text-slate-700 transition-colors flex items-center cursor-pointer"
                     >

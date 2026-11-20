@@ -34,6 +34,12 @@ const formatDate = (value) =>
     minute: '2-digit',
   });
 
+const formatDurationMinutes = (startTime, endTime) => {
+  if (!startTime || !endTime) return null;
+  const diffMin = Math.round((new Date(endTime).getTime() - new Date(startTime).getTime()) / 60000);
+  return diffMin > 0 ? diffMin : null;
+};
+
 export default function MemberClassesPage() {
   const navigate = useNavigate();
   const { showToast } = useApp();
@@ -108,7 +114,7 @@ export default function MemberClassesPage() {
   const [appliedVoucher, setAppliedVoucher] = useState(null);
   const [voucherError, setVoucherError] = useState('');
 
-  // Load quote with active membership discount whenever a session is selected
+  // Load quote with active membership discount and sport-specific quota whenever a session is selected
   useEffect(() => {
     if (registeringSession) {
       setRegisterError('');
@@ -118,9 +124,23 @@ export default function MemberClassesPage() {
       setAppliedVoucher(null);
       setVoucherCode('');
       setVoucherError('');
-      getBookingQuote('CLASS', registeringSession.sessionId)
-        .then((q) => setSessionQuote(q))
-        .catch(() => setSessionQuote(null))
+      Promise.all([
+        getBookingQuote('CLASS', registeringSession.sessionId).catch(() => null),
+        apiRequest(`/members/me/quota?bookingType=CLASS&itemId=${encodeURIComponent(registeringSession.sessionId)}`).catch(() => null),
+      ])
+        .then(([q, quotaData]) => {
+          setSessionQuote(q);
+          if (quotaData) {
+            setMemberQuota({
+              packageName: quotaData.packageName || 'Chưa có gói tập',
+              initialQuota: quotaData.initialQuota || 0,
+              usedQuota: quotaData.usedQuota || 0,
+              heldQuota: quotaData.heldQuota || 0,
+              remainingQuota: quotaData.remainingQuota || 0,
+              canUseForBooking: quotaData.canUseForBooking || false,
+            });
+          }
+        })
         .finally(() => setQuoteLoading(false));
     } else {
       setSessionQuote(null);
@@ -598,7 +618,8 @@ export default function MemberClassesPage() {
                       <div className="flex items-center justify-between text-xs">
                         <span className="text-slate-500">Thời lượng:</span>
                         <span className="font-semibold text-slate-800">
-                          {new Date(cls.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })} (60 phút)
+                          {new Date(cls.endTime).toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' })}
+                          {formatDurationMinutes(cls.startTime, cls.endTime) ? ` (${formatDurationMinutes(cls.startTime, cls.endTime)} phút)` : ''}
                         </span>
                       </div>
 
@@ -720,7 +741,7 @@ export default function MemberClassesPage() {
                 <div className="mt-4 space-y-2 text-xs text-left border-t border-slate-100 pt-3">
                   <div className="flex justify-between text-slate-600">
                     <span>Số điện thoại:</span>
-                    <strong className="text-slate-900">{selectedCoach.phone || '0901.888.xxx'}</strong>
+                    <strong className="text-slate-900">{selectedCoach.phone || 'Chưa cập nhật'}</strong>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Email liên hệ:</span>
@@ -817,7 +838,10 @@ export default function MemberClassesPage() {
                           {new Date(registeringSession.endTime).toLocaleTimeString('vi-VN', { 
                             hour: '2-digit', 
                             minute: '2-digit' 
-                          })} (60 phút)
+                          })}
+                          {formatDurationMinutes(registeringSession.startTime, registeringSession.endTime)
+                            ? ` (${formatDurationMinutes(registeringSession.startTime, registeringSession.endTime)} phút)`
+                            : ''}
                         </dd>
                       </div>
 
@@ -870,16 +894,6 @@ export default function MemberClassesPage() {
                             Voucher ưu đãi ({appliedVoucher.code}):
                           </span>
                           <strong className="font-bold text-emerald-700">-{formatMoney(voucherDiscount)}</strong>
-                        </div>
-                      )}
-
-                      {paymentMode === 'RETAIL' && appliedVoucher?.discountType === 'EXTEND_DURATION' && (
-                        <div className="flex justify-between items-center rounded-lg bg-blue-50 px-3 py-1.5 text-xs text-blue-800">
-                          <span className="flex items-center gap-1.5 font-semibold">
-                            <span className="material-symbols-outlined text-sm text-blue-600">more_time</span>
-                            Ưu đãi Voucher ({appliedVoucher.code}):
-                          </span>
-                          <strong className="font-bold text-blue-700">Tặng thêm 30 ngày thời hạn gói</strong>
                         </div>
                       )}
 
@@ -971,7 +985,7 @@ export default function MemberClassesPage() {
                       <div className="p-4 rounded-2xl bg-slate-50 border border-slate-200 space-y-2">
                         <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
                           <span className="material-symbols-outlined text-[16px] text-orange-500">confirmation_number</span>
-                          Mã Giảm Giá / Voucher (MGR-18)
+                          Mã Giảm Giá / Voucher
                         </label>
 
                         {appliedVoucher ? (

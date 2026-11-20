@@ -139,6 +139,10 @@ export default function ReceptionClassesPage() {
   };
 
   const handleSelectMember = (member) => {
+    if (member?.status && member.status !== 'ACTIVE') {
+      setEnrollError('Tài khoản hội viên chưa kích hoạt hoặc đang tạm khóa, chưa thể đăng ký lớp.');
+      return;
+    }
     setSelectedMember(member);
     setMemberQuery(member.fullName);
     setEnrollError('');
@@ -153,6 +157,10 @@ export default function ReceptionClassesPage() {
     setPendingVnpayUrl('');
     if (!selectedMember?.userId) {
       setEnrollError('Vui lòng tìm và chọn hội viên cần đăng ký lớp.');
+      return;
+    }
+    if (selectedMember.status && selectedMember.status !== 'ACTIVE') {
+      setEnrollError('Tài khoản hội viên chưa kích hoạt hoặc đang tạm khóa, chưa thể đăng ký lớp.');
       return;
     }
 
@@ -449,28 +457,40 @@ export default function ReceptionClassesPage() {
 
                       {memberOptions.length > 0 && !selectedMember && (
                         <div className="max-h-40 overflow-y-auto rounded-xl border border-slate-200 bg-white divide-y divide-slate-100 shadow-sm">
-                          {memberOptions.map((m) => (
-                            <button
-                              key={m.userId}
-                              type="button"
-                              onClick={() => handleSelectMember(m)}
-                              className="w-full px-3 py-2 text-left text-xs hover:bg-orange-50 flex items-center justify-between gap-2 cursor-pointer"
-                            >
-                              <div className="min-w-0">
-                                <strong className="text-slate-900 block truncate">{m.fullName}</strong>
-                                <span className="text-[11px] text-slate-500">{m.phone || m.email}</span>
-                              </div>
-                              <div className="text-right shrink-0">
-                                {m.activePackageName ? (
-                                  <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
-                                    {m.activePackageName} · {m.remainingQuotaSessions ?? 0} buổi
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] text-slate-400">Chưa có gói</span>
-                                )}
-                              </div>
-                            </button>
-                          ))}
+                          {memberOptions.map((m) => {
+                            const isInactive = Boolean(m.status && m.status !== 'ACTIVE');
+                            return (
+                              <button
+                                key={m.userId}
+                                type="button"
+                                disabled={isInactive}
+                                onClick={() => handleSelectMember(m)}
+                                className={`w-full px-3 py-2 text-left text-xs flex items-center justify-between gap-2 ${
+                                  isInactive
+                                    ? 'bg-slate-50 opacity-60 cursor-not-allowed'
+                                    : 'hover:bg-orange-50 cursor-pointer'
+                                }`}
+                              >
+                                <div className="min-w-0">
+                                  <strong className="text-slate-900 block truncate">{m.fullName}</strong>
+                                  <span className="text-[11px] text-slate-500">{m.phone || m.email}</span>
+                                </div>
+                                <div className="text-right shrink-0">
+                                  {isInactive ? (
+                                    <span className="inline-block px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 text-[10px] font-bold">
+                                      {m.status === 'PENDING' ? 'Chờ kích hoạt' : m.status}
+                                    </span>
+                                  ) : m.activePackageName ? (
+                                    <span className="inline-block px-2 py-0.5 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[10px] font-bold">
+                                      {m.activePackageName} · {m.remainingQuotaSessions ?? 0} buổi
+                                    </span>
+                                  ) : (
+                                    <span className="text-[10px] text-slate-400">Chưa có gói</span>
+                                  )}
+                                </div>
+                              </button>
+                            );
+                          })}
                         </div>
                       )}
 
@@ -560,17 +580,25 @@ export default function ReceptionClassesPage() {
                             </span>
                           </div>
                           <div className="flex flex-wrap items-center gap-2">
-                            <select
-                              aria-label={`Điểm danh ${student.memberName || student.memberId}`}
-                              value={student.attendanceStatus || 'PENDING'}
-                              onChange={(e) => handleUpdateStudentAttendance(student.bookingId, e.target.value)}
-                              className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold outline-none focus:border-orange-500 cursor-pointer"
-                            >
-                              <option value="PENDING">Chưa điểm danh</option>
-                              <option value="PRESENT">Có mặt (PRESENT)</option>
-                              <option value="EXCUSED_ABSENCE">Vắng có phép (EXCUSED)</option>
-                              <option value="UNEXCUSED_ABSENCE">Vắng không phép (UNEXCUSED)</option>
-                            </select>
+                            {(() => {
+                              const hasInitialAttendance = Boolean(student.attendanceStatus && student.attendanceStatus !== 'PENDING');
+                              const canEditAttendance = selectedHasStarted && hasInitialAttendance;
+                              return (
+                                <select
+                                  aria-label={`Điểm danh ${student.memberName || student.memberId}`}
+                                  disabled={!canEditAttendance}
+                                  title={!selectedHasStarted ? 'Chưa đến giờ học' : !hasInitialAttendance ? 'Chờ HLV điểm danh lần đầu' : 'Cập nhật chuyên cần'}
+                                  value={student.attendanceStatus || 'PENDING'}
+                                  onChange={(e) => handleUpdateStudentAttendance(student.bookingId, e.target.value)}
+                                  className="px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs font-semibold outline-none focus:border-orange-500 cursor-pointer disabled:bg-slate-100 disabled:text-slate-400 disabled:cursor-not-allowed"
+                                >
+                                  {!hasInitialAttendance && <option value="PENDING">Chờ HLV điểm danh</option>}
+                                  <option value="PRESENT">Có mặt (PRESENT)</option>
+                                  <option value="EXCUSED_ABSENCE">Vắng có phép (EXCUSED)</option>
+                                  <option value="UNEXCUSED_ABSENCE">Vắng không phép (UNEXCUSED)</option>
+                                </select>
+                              );
+                            })()}
 
                             {canCancelRow && !isConfirming && (
                               <button

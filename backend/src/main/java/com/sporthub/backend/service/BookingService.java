@@ -94,6 +94,12 @@ public class BookingService {
     private com.sporthub.backend.repository.MemberHealthProfileRepository healthProfileRepository;
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     private com.sporthub.backend.repository.BodyProgressLogRepository bodyProgressLogRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.sporthub.backend.repository.FeedbackRepository feedbackRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.sporthub.backend.repository.SportRepository domainSportRepository;
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    private com.sporthub.backend.repository.SystemSettingRepository systemSettingRepository;
 
     public BookingService(
             BookingRepository bookingRepository,
@@ -186,6 +192,9 @@ public class BookingService {
         } else {
             sessions = classSessionRepository.findAll().stream()
                     .filter(session -> "SCHEDULED".equalsIgnoreCase(session.getStatus()))
+                    .filter(session -> !(Integer.valueOf(1).equals(session.getMaxSlots())
+                            && session.getClassName() != null
+                            && session.getClassName().startsWith("Huấn Luyện 1-1")))
                     .filter(session -> session.getStartTime() != null && session.getStartTime().isAfter(LocalDateTime.now()))
                     .sorted((left, right) -> left.getStartTime().compareTo(right.getStartTime()))
                     .toList();
@@ -426,7 +435,8 @@ public class BookingService {
     public List<CourtSlotResponse> getAvailableCourtSlots(Long sportId) {
         PublicSport sport = getActiveSport(sportId);
         LocalDate today = LocalDate.now();
-        LocalDateTime horizon = today.plusDays(14).atStartOfDay();
+        int maxAdvanceDays = com.sporthub.backend.util.SystemPolicyHelper.maxAdvanceBookingDays(systemSettingRepository);
+        LocalDateTime horizon = today.plusDays(maxAdvanceDays).atStartOfDay();
         return sportsCourtRepository.findBySportIdOrderByCourtIdAsc(sportId).stream()
                 .flatMap(court -> {
                     LocalDateTime from = today.atStartOfDay();
@@ -435,7 +445,7 @@ public class BookingService {
                     List<CourtMaintenance> maintenanceWindows = courtMaintenanceRepository
                             .findByCourtIdAndStartTimeLessThanAndEndTimeGreaterThan(court.getCourtId(), horizon, from);
                     return java.util.stream.Stream.iterate(today, date -> date.plusDays(1))
-                            .limit(14)
+                            .limit(maxAdvanceDays)
                             .flatMap(date -> slotsForDay(court, sport, date, existingBookings, maintenanceWindows).stream());
                 })
                 .toList();
@@ -530,18 +540,43 @@ public class BookingService {
 
             LocalDateTime start = startTime != null ? startTime : LocalDateTime.now().plusDays(1).withHour(9).withMinute(0);
             LocalDateTime end = endTime != null ? endTime : start.plusHours(1);
+            if (!start.isAfter(LocalDateTime.now())) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thời gian bắt đầu buổi tập PT phải ở trong tương lai.");
+            }
+            if (!end.isAfter(start)) {
+                throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thời gian kết thúc phải sau thời gian bắt đầu.");
+            }
+            if (coachAvailability != null) {
+                coachAvailability.requireAvailable(coach, start, end);
+            }
+            if (classSessionRepository.existsOverlappingSessionForCoach(coach.getUserId(), start, end)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT, "Huấn luyện viên đã có lịch giảng dạy hoặc huấn luyện trong khung giờ này.");
+            }
+            if (memberId != null) {
+                if (bookingRepository.existsOverlappingBookingForMember(memberId, ALL_ACTIVE_STATUSES, start, end)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có lịch tham gia lớp học khác trong khung giờ này.");
+                }
+                if (courtBookingRepository.existsConfirmedOverlapForMember(memberId, start, end)) {
+                    throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có lịch đặt sân thi đấu trong khung giờ này.");
+                }
+            }
 
-            BigDecimal hourlyRate = BigDecimal.valueOf(250000);
+            BigDecimal hourlyRate = com.sporthub.backend.util.SystemPolicyHelper.ptHourlyRate(systemSettingRepository);
             long minutes = Math.max(30, Duration.between(start, end).toMinutes());
             double hours = Math.max(1.0, minutes / 60.0);
             BigDecimal originalPrice = hourlyRate.multiply(BigDecimal.valueOf(hours)).setScale(0, RoundingMode.HALF_UP);
+
+            Long resolvedSportId = resolveCoachPrimarySportId(coach);
+            String sportLabel = resolvedSportId != null
+                    ? publicSportRepository.findById(resolvedSportId).map(PublicSport::getName).orElse("Personal Training & Thể Lực")
+                    : "Personal Training & Thể Lực";
 
             DiscountInfo discount = calculateDiscount(memberId, "PT", originalPrice);
             return new BookingQuoteResponse(
                     "PT",
                     coach.getUserId(),
                     "Huấn luyện 1-1 với " + coach.getFullName(),
-                    "Personal Training & Thể Lực",
+                    sportLabel,
                     "Khu Gym PT & Sân Chuyên Dụng",
                     start,
                     end,
@@ -647,7 +682,7 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có lịch đặt sân thi đấu trong khung giờ này.");
         }
 
-        BigDecimal hourlyRate = BigDecimal.valueOf(250000);
+        BigDecimal hourlyRate = com.sporthub.backend.util.SystemPolicyHelper.ptHourlyRate(systemSettingRepository);
         long minutes = Math.max(30, Duration.between(start, end).toMinutes());
         double hours = Math.max(1.0, minutes / 60.0);
         BigDecimal originalPrice = hourlyRate.multiply(BigDecimal.valueOf(hours)).setScale(0, RoundingMode.HALF_UP);
@@ -656,16 +691,8 @@ public class BookingService {
         PaymentTransaction payment = createRetailPayment(memberId, "PT", null, discount.finalAmount(), request);
 
         List<ClassSession> coachSessions = classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId());
-        Long sportId = coachSessions.stream()
-                .map(ClassSession::getSportId)
-                .filter(id -> id != null)
-                .findFirst()
-                .orElseGet(() -> publicSportRepository.findAll().stream().map(PublicSport::getSportId).findFirst().orElse(1L));
-        Long facilityId = coachSessions.stream()
-                .map(ClassSession::getFacilityId)
-                .filter(id -> id != null)
-                .findFirst()
-                .orElseGet(() -> publicFacilityRepository.findAll().stream().map(PublicFacility::getFacilityId).findFirst().orElse(1L));
+        Long sportId = resolveCoachPrimarySportId(coach, coachSessions);
+        Long facilityId = resolveCoachPrimaryFacilityId(coachSessions, sportId);
 
         ClassSession session = new ClassSession();
         session.setClassName("Huấn Luyện 1-1 (" + coach.getFullName() + ")");
@@ -984,7 +1011,9 @@ public class BookingService {
         }
 
         // 4. Find membership with quota
-        UserMembership membership = membershipService.getActiveMembershipWithQuota(memberId, 1, "PT", classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId()).stream().map(ClassSession::getSportId).filter(java.util.Objects::nonNull).findFirst().orElse(null), start, end);
+        List<ClassSession> coachSessions = classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId());
+        Long ptSportId = resolveCoachPrimarySportId(coach, coachSessions);
+        UserMembership membership = membershipService.getActiveMembershipWithQuota(memberId, 1, "PT", ptSportId, start, end);
         if (membership == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                 "Không có gói membership còn quota. Vui lòng chọn thanh toán giá lẻ.");
@@ -1006,17 +1035,9 @@ public class BookingService {
         );
 
         // 6. Create PT session
-        List<ClassSession> coachSessions = classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId());
-        Long sportId = coachSessions.stream()
-                .map(ClassSession::getSportId)
-                .filter(id -> id != null)
-                .findFirst()
-                .orElseGet(() -> publicSportRepository.findAll().stream().map(PublicSport::getSportId).findFirst().orElse(1L));
-        Long facilityId = coachSessions.stream()
-                .map(ClassSession::getFacilityId)
-                .filter(id -> id != null)
-                .findFirst()
-                .orElseGet(() -> publicFacilityRepository.findAll().stream().map(PublicFacility::getFacilityId).findFirst().orElse(1L));
+        Long sportId = ptSportId != null ? ptSportId
+                : publicSportRepository.findAll().stream().map(PublicSport::getSportId).findFirst().orElse(1L);
+        Long facilityId = resolveCoachPrimaryFacilityId(coachSessions, sportId);
 
         ClassSession session = new ClassSession();
         session.setClassName("Huấn Luyện 1-1 (" + coach.getFullName() + ")");
@@ -1238,6 +1259,9 @@ public class BookingService {
                 }
             });
         }
+        if (isSessionUnderMaintenance(session)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Cơ sở vật chất đang có lịch bảo trì trùng khung giờ lớp học này.");
+        }
         requirePrice(session.getPriceAmount());
     }
 
@@ -1253,8 +1277,9 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thời lượng đặt sân phải theo từng khung 60 phút liên tiếp (1 giờ, 2 giờ, 3 giờ...).");
         }
         LocalDateTime now = LocalDateTime.now();
-        if (!startTime.isAfter(now) || startTime.isAfter(now.plusDays(14))) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ có thể đặt sân trong 14 ngày tới.");
+        int maxAdvanceDays = com.sporthub.backend.util.SystemPolicyHelper.maxAdvanceBookingDays(systemSettingRepository);
+        if (!startTime.isAfter(now) || startTime.isAfter(now.plusDays(maxAdvanceDays))) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Chỉ có thể đặt sân trong " + maxAdvanceDays + " ngày tới.");
         }
         if (!startTime.toLocalTime().equals(startTime.toLocalTime().withMinute(0).withSecond(0).withNano(0))
                 || !endTime.toLocalTime().equals(endTime.toLocalTime().withMinute(0).withSecond(0).withNano(0))
@@ -1325,7 +1350,8 @@ public class BookingService {
                     member == null ? null : member.getPhone(),
                     booking.getStatus(),
                     booking.getAttendanceStatus() == null ? null : booking.getAttendanceStatus().name(),
-                    booking.getCoachNote());
+                    booking.getCoachNote(),
+                    Boolean.TRUE.equals(booking.getUsesMembershipQuota()));
         }).toList();
     }
 
@@ -1340,9 +1366,46 @@ public class BookingService {
                 .filter(session -> !"CANCELLED".equalsIgnoreCase(session.getStatus()))
                 .toList();
 
-        List<Long> sportIds = coachSessions.stream().map(ClassSession::getSportId).distinct().toList();
-        List<String> sportsTaught = sportIds.isEmpty() ? List.of("Đào tạo thể thao") :
-                publicSportRepository.findAllById(sportIds).stream().map(PublicSport::getName).toList();
+        List<com.sporthub.backend.entity.Sport> allDomainSports = domainSportRepository != null
+                ? domainSportRepository.findAllByOrderBySportIdAsc()
+                : List.of();
+        List<Long> resolvedSportIds = com.sporthub.backend.util.CoachSportHelper.resolveCoachSportIds(coach, allDomainSports);
+        if (resolvedSportIds.isEmpty()) {
+            resolvedSportIds = coachSessions.stream()
+                    .map(ClassSession::getSportId)
+                    .filter(java.util.Objects::nonNull)
+                    .distinct()
+                    .toList();
+        }
+        List<String> sportsTaught;
+        if (!resolvedSportIds.isEmpty()) {
+            Map<Long, String> sportNameMap = new LinkedHashMap<>();
+            allDomainSports.forEach(s -> sportNameMap.put(s.getSportId(), s.getSportName()));
+            publicSportRepository.findAllById(resolvedSportIds).forEach(ps -> sportNameMap.putIfAbsent(ps.getSportId(), ps.getName()));
+            sportsTaught = resolvedSportIds.stream()
+                    .map(sportNameMap::get)
+                    .filter(n -> n != null && !n.isBlank())
+                    .toList();
+        } else if (coach.getSpecialty() != null && !coach.getSpecialty().isBlank()) {
+            sportsTaught = java.util.Arrays.stream(coach.getSpecialty().split("[,;·/|]+"))
+                    .map(String::trim)
+                    .filter(s -> !s.isBlank())
+                    .toList();
+        } else {
+            sportsTaught = List.of("Đào tạo thể thao");
+        }
+
+        double avgRating = 0.0;
+        int reviewCount = 0;
+        if (feedbackRepository != null) {
+            List<com.sporthub.backend.entity.Feedback> feedbacks = feedbackRepository.findByCoachIdOrderByCreatedAtDesc(coachId);
+            reviewCount = feedbacks.size();
+            long ratedCount = feedbacks.stream().filter(f -> f.getRating() != null).count();
+            if (ratedCount > 0) {
+                double sum = feedbacks.stream().filter(f -> f.getRating() != null).mapToInt(com.sporthub.backend.entity.Feedback::getRating).sum();
+                avgRating = Math.round((sum / ratedCount) * 10.0) / 10.0;
+            }
+        }
 
         return new CoachPublicProfileResponse(
                 coach.getUserId(),
@@ -1350,11 +1413,57 @@ public class BookingService {
                 coach.getEmail(),
                 coach.getPhone(),
                 coach.getAvatar(),
-                "Huấn luyện viên Chuyên Nghiệp F Sport Center",
-                coach.getAddress() != null && !coach.getAddress().isBlank() ? coach.getAddress() :
-                        "Huấn luyện viên đạt chứng chỉ chuyên môn quốc tế với nhiều năm kinh nghiệm huấn luyện học viên tại F Sport Center.",
+                coach.getSpecialty() != null && !coach.getSpecialty().isBlank()
+                        ? coach.getSpecialty()
+                        : "Huấn luyện viên Chuyên Nghiệp F Sport Center",
+                coach.getBio() != null && !coach.getBio().isBlank()
+                        ? coach.getBio()
+                        : (coach.getAddress() != null && !coach.getAddress().isBlank()
+                                ? coach.getAddress()
+                                : "Huấn luyện viên đạt chứng chỉ chuyên môn với nhiều năm kinh nghiệm huấn luyện học viên tại F Sport Center."),
                 coachSessions.size(),
-                sportsTaught);
+                sportsTaught,
+                resolvedSportIds,
+                com.sporthub.backend.util.SystemPolicyHelper.ptHourlyRate(systemSettingRepository),
+                avgRating,
+                reviewCount,
+                coach.getAvailabilityJson() != null ? coach.getAvailabilityJson() : "{}");
+    }
+
+    private Long resolveCoachPrimarySportId(User coach) {
+        return resolveCoachPrimarySportId(coach, classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId()));
+    }
+
+    private Long resolveCoachPrimarySportId(User coach, List<ClassSession> coachSessions) {
+        List<com.sporthub.backend.entity.Sport> allDomainSports = domainSportRepository != null
+                ? domainSportRepository.findAllByOrderBySportIdAsc()
+                : List.of();
+        List<Long> coachSportIds = com.sporthub.backend.util.CoachSportHelper.resolveCoachSportIds(coach, allDomainSports);
+        if (!coachSportIds.isEmpty()) {
+            return coachSportIds.get(0);
+        }
+        return coachSessions.stream()
+                .map(ClassSession::getSportId)
+                .filter(id -> id != null)
+                .findFirst()
+                .orElseGet(() -> publicSportRepository.findAll().stream().map(PublicSport::getSportId).findFirst().orElse(1L));
+    }
+
+    private Long resolveCoachPrimaryFacilityId(List<ClassSession> coachSessions, Long sportId) {
+        return coachSessions.stream()
+                .map(ClassSession::getFacilityId)
+                .filter(id -> id != null)
+                .findFirst()
+                .orElseGet(() -> {
+                    if (facilityRepository != null && sportId != null) {
+                        var match = facilityRepository.findAll().stream()
+                                .filter(f -> java.util.Objects.equals(f.getSportId(), sportId) && !"MAINTENANCE".equalsIgnoreCase(f.getStatus()))
+                                .map(com.sporthub.backend.entity.Facility::getFacilityId)
+                                .findFirst();
+                        if (match.isPresent()) return match.get();
+                    }
+                    return publicFacilityRepository.findAll().stream().map(PublicFacility::getFacilityId).findFirst().orElse(1L);
+                });
     }
 
     @Transactional(readOnly = true)
@@ -1450,9 +1559,12 @@ public class BookingService {
         if (sessionId == null || memberId == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vui lòng chọn lớp học và hội viên.");
         }
-        userRepository.findById(memberId)
+        User member = userRepository.findById(memberId)
                 .filter(u -> "MEMBER".equalsIgnoreCase(u.getRole()))
                 .orElseThrow(() -> notFound("Không tìm thấy hội viên."));
+        if (!"ACTIVE".equalsIgnoreCase(member.getStatus())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Tài khoản hội viên hiện chưa kích hoạt hoặc đang tạm khóa.");
+        }
 
         boolean quota = Boolean.TRUE.equals(useQuota);
         String effectiveMethod = quota ? null
@@ -1528,7 +1640,8 @@ public class BookingService {
         if (!session.getStartTime().isAfter(LocalDateTime.now())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Buổi học đã bắt đầu.");
         if (booking.getAttendanceStatus() != null && booking.getAttendanceStatus() != AttendanceStatus.PENDING)
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Buổi học đã được điểm danh.");
-        boolean timely = !session.getStartTime().minusHours(2).isBefore(LocalDateTime.now()) || "CANCELLED".equals(session.getStatus()) || isSessionUnderMaintenance(session);
+        int cancelDeadlineHours = com.sporthub.backend.util.SystemPolicyHelper.cancelRefundDeadlineHours(systemSettingRepository);
+        boolean timely = !session.getStartTime().minusHours(cancelDeadlineHours).isBefore(LocalDateTime.now()) || "CANCELLED".equals(session.getStatus()) || isSessionUnderMaintenance(session);
         boolean isPt = booking.getPaymentId() != null && paymentTransactionRepository.findById(booking.getPaymentId())
                 .map(p -> "PT".equalsIgnoreCase(p.getBookingType()))
                 .orElse(false);
@@ -1573,7 +1686,8 @@ public class BookingService {
         CourtBooking booking = courtBookingRepository.findByIdForUpdate(id).orElseThrow(() -> notFound("Không tìm thấy đặt sân."));
         if (!booking.getMemberId().equals(userId)) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         if (!List.of("PENDING", "CONFIRMED").contains(booking.getStatus())) throw new ResponseStatusException(HttpStatus.CONFLICT, "Lịch không thể hủy.");
-        boolean timely = !booking.getStartTime().minusHours(2).isBefore(LocalDateTime.now())
+        int cancelDeadlineHours = com.sporthub.backend.util.SystemPolicyHelper.cancelRefundDeadlineHours(systemSettingRepository);
+        boolean timely = !booking.getStartTime().minusHours(cancelDeadlineHours).isBefore(LocalDateTime.now())
             || courtMaintenanceRepository.existsByCourtIdAndStartTimeLessThanAndEndTimeGreaterThan(booking.getCourtId(), booking.getEndTime(), booking.getStartTime());
         String title = sportsCourtRepository.findById(booking.getCourtId()).map(SportsCourt::getCourtName).orElse("Sân thể thao");
         CancelBookingResponse response = cancellationResult("COURT", id, userId, booking.getPaymentId(), title, booking.getStartTime(), timely);
@@ -1641,6 +1755,7 @@ public class BookingService {
     }
 
     public boolean isRefundEligible(PaymentTransaction payment) {
+        int cancelDeadlineHours = com.sporthub.backend.util.SystemPolicyHelper.cancelRefundDeadlineHours(systemSettingRepository);
         if (payment.getMembershipId() != null) {
             return userMembershipRepository.findById(payment.getMembershipId()).map(m ->
                 List.of("PENDING_APPROVAL", "REJECTED", "CANCELLED").contains(m.getStatus())
@@ -1648,13 +1763,13 @@ public class BookingService {
         }
         if ("COURT".equals(payment.getBookingType())) {
             CourtBooking booking = courtBookingRepository.findByPaymentId(payment.getPaymentId());
-            return booking != null && !"CHECKED_IN".equals(booking.getStatus()) && (!booking.getStartTime().minusHours(2).isBefore(LocalDateTime.now())
+            return booking != null && !"CHECKED_IN".equals(booking.getStatus()) && (!booking.getStartTime().minusHours(cancelDeadlineHours).isBefore(LocalDateTime.now())
                 || courtMaintenanceRepository.existsByCourtIdAndStartTimeLessThanAndEndTimeGreaterThan(booking.getCourtId(), booking.getEndTime(), booking.getStartTime()));
         }
         Booking booking = bookingRepository.findByPaymentId(payment.getPaymentId());
         if (booking == null) return false;
         ClassSession session = classSessionRepository.findById(booking.getSessionId()).orElse(null);
-        return session != null && ("CANCELLED".equals(session.getStatus()) || isSessionUnderMaintenance(session) || !session.getStartTime().minusHours(2).isBefore(LocalDateTime.now()))
+        return session != null && ("CANCELLED".equals(session.getStatus()) || isSessionUnderMaintenance(session) || !session.getStartTime().minusHours(cancelDeadlineHours).isBefore(LocalDateTime.now()))
             && (booking.getAttendanceStatus() == null || booking.getAttendanceStatus() == AttendanceStatus.PENDING);
     }
 
@@ -1759,9 +1874,10 @@ public class BookingService {
         }
 
         LocalDateTime now = LocalDateTime.now();
-        if (courtBooking.getStartTime().minusHours(2).isBefore(now)
+        int cancelDeadlineHours = com.sporthub.backend.util.SystemPolicyHelper.cancelRefundDeadlineHours(systemSettingRepository);
+        if (courtBooking.getStartTime().minusHours(cancelDeadlineHours).isBefore(now)
                 && !courtMaintenanceRepository.existsByCourtIdAndStartTimeLessThanAndEndTimeGreaterThan(courtBooking.getCourtId(), courtBooking.getEndTime(), courtBooking.getStartTime()))
-            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ đổi lịch trước giờ bắt đầu ít nhất 2 tiếng.");
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ đổi lịch trước giờ bắt đầu ít nhất " + cancelDeadlineHours + " tiếng.");
         if (newStartTime == null || newEndTime == null || !Duration.between(newStartTime, newEndTime).equals(Duration.between(courtBooking.getStartTime(), courtBooking.getEndTime())))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Đổi lịch chỉ áp dụng cùng thời lượng; hãy hủy và đặt mới nếu đổi số giờ.");
 
@@ -1873,6 +1989,19 @@ public class BookingService {
                 court.getCourtId(), request.startTime(), request.endTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Khung giờ này đã có người đặt. Vui lòng chọn thời gian khác.");
+        }
+
+        long memberConcurrentCourts = courtBookingRepository.countMemberConcurrentCourts(
+                memberId, request.startTime(), request.endTime());
+        if (memberConcurrentCourts >= 3) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT,
+                "Bạn đã đặt tối đa 3 sân trong cùng khung giờ này. Vui lòng chọn thời gian khác hoặc hủy một trong các sân đã đặt.");
+        }
+        if (bookingRepository.existsOverlappingBookingForMember(memberId, ALL_ACTIVE_STATUSES, request.startTime(), request.endTime())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có lịch tham gia lớp học trong khung giờ này.");
+        }
+        if (courtBookingRepository.existsConfirmedOverlapForMember(memberId, request.startTime(), request.endTime())) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có một lịch đặt sân khác trong khung giờ này.");
         }
 
         // 5. Get and validate membership with court quota

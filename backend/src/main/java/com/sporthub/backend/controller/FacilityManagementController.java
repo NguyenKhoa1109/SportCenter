@@ -50,6 +50,9 @@ public class FacilityManagementController {
     @Autowired(required = false)
     private com.sporthub.backend.service.CoachAvailabilityService coachAvailabilityService;
 
+    @Autowired(required = false)
+    private com.sporthub.backend.repository.CourtMaintenanceRepository courtMaintenanceRepository;
+
     @Autowired
     public FacilityManagementController(
             FacilityRepository facilityRepository,
@@ -125,6 +128,10 @@ public class FacilityManagementController {
             facility.setStatus(request.status());
             facilityRepository.save(facility);
         }
+        if (engagementService != null) {
+            engagementService.audit(actorId(authentication), actorRole(authentication),
+                    "FACILITY_STATUS_UPDATED", "facilityId=" + facilityId + ", status=" + facility.getStatus());
+        }
 
         String sportName = sportRepository.findById(facility.getSportId())
                 .map(Sport::getSportName)
@@ -190,6 +197,10 @@ public class FacilityManagementController {
                 throw new ResponseStatusException(HttpStatus.CONFLICT,
                         "Cơ sở / sân bãi đã được xếp lịch lớp khác bị trùng giờ trong khung giờ này.");
             }
+            if (hasMaintenanceOverlap(request.facilityId(), request.sportId(), start, end)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Sân / cơ sở đang có lịch bảo trì trùng khung giờ lớp học này.");
+            }
         }
 
         List<ClassSession> sessions = new ArrayList<>(request.sessionCount());
@@ -207,7 +218,14 @@ public class FacilityManagementController {
             session.setStatus("SCHEDULED");
             sessions.add(session);
         }
-        return classSessionRepository.saveAll(sessions);
+        List<ClassSession> savedSessions = classSessionRepository.saveAll(sessions);
+        if (engagementService != null) {
+            engagementService.audit(actorId(authentication), actorRole(authentication),
+                    "CLASS_SESSION_CREATED",
+                    "className=" + request.className().trim() + ", count=" + savedSessions.size()
+                            + ", facilityId=" + request.facilityId());
+        }
+        return savedSessions;
     }
 
     @GetMapping("/class-sessions")
@@ -315,6 +333,26 @@ public class FacilityManagementController {
                         "Huấn luyện viên đã có ca dạy khác bị trùng giờ trong khung giờ này.");
             }
         }
+        if (!"CANCELLED".equalsIgnoreCase(targetStatus)
+                && (request.facilityId() != null || (request.startTime() != null && request.endTime() != null))
+                && session.getFacilityId() != null && session.getStartTime() != null && session.getEndTime() != null) {
+            LocalDateTime targetStart = session.getStartTime();
+            LocalDateTime targetEnd = session.getEndTime();
+            boolean facilityConflict = classSessionRepository.findAll().stream()
+                    .anyMatch(existing -> !Objects.equals(existing.getSessionId(), sessionId)
+                            && !"CANCELLED".equalsIgnoreCase(existing.getStatus())
+                            && Objects.equals(existing.getFacilityId(), session.getFacilityId())
+                            && targetStart.isBefore(existing.getEndTime())
+                            && targetEnd.isAfter(existing.getStartTime()));
+            if (facilityConflict) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Cơ sở / sân bãi đã được xếp lịch lớp khác bị trùng giờ trong khung giờ này.");
+            }
+            if (hasMaintenanceOverlap(session.getFacilityId(), session.getSportId(), targetStart, targetEnd)) {
+                throw new ResponseStatusException(HttpStatus.CONFLICT,
+                        "Sân / cơ sở đang có lịch bảo trì trùng khung giờ lớp học này.");
+            }
+        }
         if (request.maxSlots() != null && request.maxSlots() > 0) {
             session.setMaxSlots(request.maxSlots());
         }
@@ -341,6 +379,8 @@ public class FacilityManagementController {
                                     + saved.getStartTime().toString().replace("T", " ") + ". Vui lòng kiểm tra lại thời khóa biểu.", "MEMBER");
                 }
             }
+            engagementService.audit(actorId(authentication), actorRole(authentication),
+                    "CLASS_SESSION_UPDATED", "sessionId=" + saved.getSessionId() + ", status=" + saved.getStatus());
         }
 
         return saved;
@@ -383,6 +423,8 @@ public class FacilityManagementController {
                                     + " đã bị hủy. Học phí/lượt học của bạn đã được hoàn lại. Lý do: " + reason, "MEMBER");
                 }
             }
+            engagementService.audit(actorId(authentication), actorRole(authentication),
+                    "CLASS_SESSION_CANCELLED", "sessionId=" + sessionId + ", reason=" + reason);
         }
 
         Map<String, Object> res = new LinkedHashMap<>();
@@ -411,6 +453,40 @@ public class FacilityManagementController {
                 || (request.priceAmount() != null && request.priceAmount().signum() < 0)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Thông tin lịch lớp không hợp lệ.");
         }
+    }
+
+    private boolean hasMaintenanceOverlap(Long facilityId, Long sportId, LocalDateTime start, LocalDateTime end) {
+        if (syncService == null || courtMaintenanceRepository == null || facilityId == null || start == null || end == null) {
+            return false;
+        }
+        String facilityName = facilityRepository.findById(facilityId).map(Facility::getFacilityName).orElse(null);
+        List<Long> courtIds = syncService.getCourtIdsForFacility(facilityId, sportId, facilityName);
+        if (courtIds == null || courtIds.isEmpty()) {
+            return false;
+        }
+        return courtIds.stream().anyMatch(courtId ->
+                courtMaintenanceRepository.existsByCourtIdAndStartTimeLessThanAndEndTimeGreaterThan(courtId, end, start));
+    }
+
+    private Long actorId(Authentication authentication) {
+        if (authentication == null || authentication.getName() == null) {
+            return null;
+        }
+        try {
+            return Long.valueOf(authentication.getName());
+        } catch (NumberFormatException ex) {
+            return userRepository.findByEmailIgnoreCase(authentication.getName()).map(User::getUserId).orElse(null);
+        }
+    }
+
+    private String actorRole(Authentication authentication) {
+        if (authentication == null || authentication.getAuthorities() == null) {
+            return "MANAGER";
+        }
+        return authentication.getAuthorities().stream()
+                .map(a -> a.getAuthority().replace("ROLE_", ""))
+                .findFirst()
+                .orElse("MANAGER");
     }
 
     private void requireManager(Authentication authentication) {

@@ -1,4 +1,4 @@
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { CardGridSkeleton, TableSkeleton } from '../../components/common/Skeleton';
@@ -267,6 +267,10 @@ export default function AdminFacilitiesPage() {
     e.preventDefault();
     if (!maintenanceForm.courtId || !maintenanceForm.startTime || !maintenanceForm.endTime) {
       showToast('Lỗi', 'Vui lòng chọn sân và thời gian bảo trì.', 'warning');
+      return;
+    }
+    if (new Date(maintenanceForm.endTime) <= new Date(maintenanceForm.startTime)) {
+      showToast('Lỗi', 'Thời gian kết thúc bảo trì phải sau thời gian bắt đầu.', 'warning');
       return;
     }
     setSaving(true);
@@ -706,14 +710,22 @@ export default function AdminFacilitiesPage() {
                   Khi tạo lịch bảo trì, hệ thống thông báo khách tự chọn: Đổi lịch hoặc Hủy không phạt (Hệ thống không tự đổi sang sân khác).
                 </p>
               </div>
-              <button
-                type="button"
-                onClick={() => setIsMaintenanceModalOpen(true)}
-                className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider shadow-2xs cursor-pointer flex items-center gap-1.5"
-              >
-                <span className="material-symbols-outlined text-[16px]">add</span>
-                <span>Lên lịch mới</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-2">
+                <Link
+                  to="/admin/maintenance"
+                  className="px-3.5 py-2 rounded-xl border border-slate-200 bg-white hover:bg-slate-50 text-slate-700 text-xs font-bold transition cursor-pointer"
+                >
+                  Trang bảo trì chuyên biệt
+                </Link>
+                <button
+                  type="button"
+                  onClick={() => setIsMaintenanceModalOpen(true)}
+                  className="px-4 py-2 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider shadow-2xs cursor-pointer flex items-center gap-1.5"
+                >
+                  <span className="material-symbols-outlined text-[16px]">add</span>
+                  <span>Lên lịch mới</span>
+                </button>
+              </div>
             </div>
 
             <div className="overflow-x-auto">
@@ -755,7 +767,7 @@ export default function AdminFacilitiesPage() {
                             ? 'Đã hoàn tất'
                             : m.status === 'IN_PROGRESS'
                             ? 'Đang khóa bảo trì'
-                            : 'Đã lên lịch (SCHEDULED)'}
+                            : 'Đã lên lịch'}
                         </span>
                       </td>
                       <td className="px-5 py-4 text-right">

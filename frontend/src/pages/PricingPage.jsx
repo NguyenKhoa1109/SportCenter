@@ -3,7 +3,8 @@ import { Link, useNavigate } from 'react-router-dom';
 import Footer from '../components/Footer';
 import Navbar from '../components/Navbar';
 import { useApp } from '../context/AppContext';
-import { apiRequest } from '../services/apiClient';
+import { apiRequest, generatePayment } from '../services/apiClient';
+import { redirectToPayment } from '../services/paymentNavigation';
 import { getPublicPackages } from '../services/publicContentApi';
 import { getTierBadgeStyle } from '../utils/memberMemberships';
 
@@ -46,7 +47,12 @@ export default function PricingPage() {
 
   const handlePurchase = async (membershipPackage) => {
     if (!currentUser) {
-      navigate('/login', { state: { notice: 'Vui lòng đăng nhập tài khoản hội viên để đăng ký gói tập.' } });
+      navigate('/login', {
+        state: {
+          notice: 'Vui lòng đăng nhập tài khoản hội viên để đăng ký gói tập.',
+          from: '/pricing',
+        },
+      });
       return;
     }
 
@@ -56,8 +62,26 @@ export default function PricingPage() {
     try {
       const result = await apiRequest('/members/me/memberships', {
         method: 'POST',
-        body: JSON.stringify({ packageId: membershipPackage.packageId }),
+        body: JSON.stringify({
+          packageId: membershipPackage.packageId,
+          paymentMethod: 'VNPAY',
+        }),
       });
+      if (result.paymentId && result.paymentStatus !== 'PAID') {
+        try {
+          const vnpayResult = await generatePayment(result.paymentId, 'VNPAY');
+          redirectToPayment(result.paymentId, vnpayResult.paymentUrl);
+          return;
+        } catch {
+          showToast(
+            'Đã tạo yêu cầu gói tập',
+            'Vui lòng hoàn tất thanh toán VNPay tại trang Gói hội viên.',
+            'info',
+          );
+          navigate('/member/packages');
+          return;
+        }
+      }
       const message = `Đã ghi nhận yêu cầu đăng ký "${result.packageName}". Trạng thái thanh toán: ${result.paymentStatus}.`;
       setPurchaseMessage(message);
       showToast('Đăng ký gói thành công', message, 'success');
@@ -255,11 +279,30 @@ export default function PricingPage() {
                               : 'bg-slate-900 hover:bg-orange-500 text-white'
                           }`}
                         >
-                          {savingPackageId === pkg.packageId ? 'Đang gửi yêu cầu...' : 'Đăng Ký Gói Này'}
+                          {savingPackageId === pkg.packageId ? 'Đang chuyển thanh toán...' : 'Đăng Ký & Thanh Toán VNPay'}
                         </button>
+                      ) : currentUser ? (
+                        <Link
+                          to="/member/packages"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            showToast(
+                              'Chỉ áp dụng cho Hội viên',
+                              'Vui lòng dùng tài khoản Hội viên để đăng ký gói tập hoặc tạo gói cho khách tại quầy Lễ tân.',
+                              'info',
+                            );
+                          }}
+                          className="block w-full py-3.5 px-4 rounded-xl text-center text-xs font-black uppercase tracking-wider bg-slate-100 text-slate-500 border border-slate-200 cursor-not-allowed"
+                        >
+                          Chỉ Dành Cho Hội Viên
+                        </Link>
                       ) : (
                         <Link
                           to="/login"
+                          state={{
+                            notice: 'Vui lòng đăng nhập tài khoản hội viên để đăng ký gói tập.',
+                            from: '/pricing',
+                          }}
                           className={`block w-full py-3.5 px-4 rounded-xl text-center text-xs font-black uppercase tracking-wider transition-all shadow-md ${
                             isFeatured
                               ? 'bg-orange-500 hover:bg-orange-600 text-white shadow-orange-500/30'
@@ -289,9 +332,9 @@ export default function PricingPage() {
                 </p>
               </div>
               <div className="space-y-2 p-4 rounded-2xl bg-slate-50 border border-slate-100">
-                <h4 className="font-bold text-slate-900 text-sm">Tôi có thể bảo lưu gói tập khi bận không?</h4>
+                <h4 className="font-bold text-slate-900 text-sm">Tôi có thể gia hạn hoặc nâng hạng gói tập như thế nào?</h4>
                 <p className="text-slate-600 font-medium leading-relaxed">
-                  Có, hội viên được bảo lưu tối đa 30 ngày cho các gói từ 3 tháng trở lên. Vui lòng liên hệ Lễ tân để được hỗ trợ.
+                  Gia hạn gói cùng hạng sẽ tự động nối tiếp hạn sử dụng hiện tại; khi nâng hạng gói, quyền lợi mới được kích hoạt ngay sau khi thanh toán và được Quản lý phê duyệt.
                 </p>
               </div>
             </div>

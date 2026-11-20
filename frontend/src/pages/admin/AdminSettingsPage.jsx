@@ -8,7 +8,7 @@ import { getAiConfig, updateAiConfig } from '../../services/managerApi';
 const INITIAL_POLICIES = {
   bookingHoldTimeoutMinutes: 10,
   cancelRefundDeadlineHours: 2,
-  coachCommissionPercent: 70,
+  coachCommissionPercent: 40,
   maxAdvanceBookingDays: 14,
   guestCourtDepositPercent: 50,
   checkInGracePeriodMinutes: 15,
@@ -133,7 +133,7 @@ export default function AdminSettingsPage() {
         if (data.policies) {
           try {
             const parsed = typeof data.policies === 'string' ? JSON.parse(data.policies) : data.policies;
-            if (parsed && typeof parsed === 'object') setPolicies(parsed);
+            if (parsed && typeof parsed === 'object') setPolicies((prev) => ({ ...prev, ...parsed }));
           } catch {}
         }
         if (data.permissions) {
@@ -147,10 +147,10 @@ export default function AdminSettingsPage() {
     return () => { active = false; };
   }, []);
 
-  // AI Config State (MGR-15)
+  // AI Config State
   const [aiConfig, setAiConfig] = useState({
     ai_enabled: true,
-    ai_model: 'gpt-4o-mini',
+    ai_model: 'gemini-flash-lite-latest',
     ai_temperature: 0.7,
     ai_system_prompt: '',
   });
@@ -166,7 +166,7 @@ export default function AdminSettingsPage() {
           if (active && data) {
             setAiConfig({
               ai_enabled: data.ai_enabled === true || String(data.ai_enabled) === 'true',
-              ai_model: data.ai_model || 'gpt-4o-mini',
+              ai_model: data.ai_model || 'gemini-flash-lite-latest',
               ai_temperature: data.ai_temperature != null ? Number(data.ai_temperature) : 0.7,
               ai_system_prompt: data.ai_system_prompt || '',
             });
@@ -428,7 +428,7 @@ export default function AdminSettingsPage() {
                   onChange={(e) => setPolicies({ ...policies, coachCommissionPercent: Number(e.target.value) })}
                   className="w-full px-4 py-2.5 rounded-xl border border-slate-300 text-sm font-bold bg-white focus:ring-2 focus:ring-orange-500"
                 />
-                <p className="text-[11px] text-slate-500">Phần trăm thù lao HLV nhận được từ các gói dạy PT lẻ.</p>
+                <p className="text-[11px] text-slate-500">Phần trăm thù lao HLV nhận được trên doanh thu lớp / buổi PT.</p>
               </div>
 
               <div className="p-4 rounded-xl border border-slate-200 bg-slate-50/50 space-y-2">
@@ -692,7 +692,7 @@ export default function AdminSettingsPage() {
                         {log.isDbRecord ? (
                           <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 font-bold border border-emerald-200 text-[10px]">
                             <span className="material-symbols-outlined text-[12px]">database</span>
-                            DB SQL
+                            CSDL
                           </span>
                         ) : (
                           <span className="text-slate-400">{log.ipAddress}</span>
@@ -770,13 +770,10 @@ export default function AdminSettingsPage() {
                       onChange={(e) => setAiConfig({ ...aiConfig, ai_model: e.target.value })}
                       className="w-full rounded-xl border border-slate-300 bg-white p-3 text-xs font-bold text-slate-800 outline-none focus:border-orange-500"
                     >
-                      <option value="gemini-flash-lite-latest">Google Gemini Flash Lite Latest (Mặc định SportHub)</option>
-                      <option value="gemini-3.1-flash-lite">Google Gemini 3.1 Flash Lite</option>
-                      <option value="gemini-3.5-flash-lite">Google Gemini 3.5 Flash Lite</option>
-                      <option value="gemini-1.5-flash">Google Gemini 1.5 Flash (Xử lý ngữ cảnh siêu nhanh)</option>
-                      <option value="gpt-4o-mini">OpenAI GPT-4o Mini (Khi dùng endpoint OpenAI)</option>
-                      <option value="gpt-4o">OpenAI GPT-4o (Khi dùng endpoint OpenAI)</option>
-                      <option value="claude-3-5-sonnet">Anthropic Claude 3.5 Sonnet</option>
+                      <option value="gemini-flash-lite-latest">Google Gemini Flash Lite Latest (Mặc định hệ thống)</option>
+                      <option value="gemini-2.5-flash-lite">Google Gemini 2.5 Flash Lite</option>
+                      <option value="gemini-2.5-flash">Google Gemini 2.5 Flash (Ngữ cảnh cân bằng)</option>
+                      <option value="gemini-1.5-flash">Google Gemini 1.5 Flash (Tốc độ cao)</option>
                     </select>
                     <p className="text-[11px] text-slate-500">
                       Mô hình được gọi để xử lý các câu hỏi về lịch học, đặt sân và chế độ tập luyện của hội viên.

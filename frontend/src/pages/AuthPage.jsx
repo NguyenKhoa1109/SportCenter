@@ -35,6 +35,11 @@ export default function AuthPage() {
   const location = useLocation();
   const navigate = useNavigate();
   const { authenticateUser, currentUser, currentRole } = useApp();
+  const redirectFrom = typeof location.state?.from === 'string'
+    ? location.state.from
+    : location.state?.from?.pathname
+      ? `${location.state.from.pathname}${location.state.from.search || ''}`
+      : '';
 
   useEffect(() => {
     if (currentUser) {
@@ -53,11 +58,14 @@ export default function AuthPage() {
   // Password visibility
   const [showPassword, setShowPassword] = useState(false);
   const [authError, setAuthError] = useState('');
-  const [authNotice, setAuthNotice] = useState('');
+  const [authNotice, setAuthNotice] = useState(
+    location.state?.notice || location.state?.message || '',
+  );
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [infoDialog, setInfoDialog] = useState(null);
 
   // Login form state
-  const [loginIdentifier, setLoginIdentifier] = useState('');
+  const [loginIdentifier, setLoginIdentifier] = useState(location.state?.email || '');
   const [loginPassword, setLoginPassword] = useState('');
 
   // Register form state (hỗ trợ MEMBER tự xác thực OTP và COACH/RECEPTIONIST chờ Quản lý phê duyệt)
@@ -78,34 +86,6 @@ export default function AuthPage() {
     }));
   };
 
-  // OTP Verification Modal State
-  const [otpModal, setOtpModal] = useState({
-    isOpen: false,
-    email: '',
-    pendingUser: null,
-    otpCode: '',
-    timer: 600, // 10 minutes (expires_at)
-  });
-
-  // OTP Timer countdown
-  useEffect(() => {
-    let interval = null;
-    if (otpModal.isOpen && otpModal.timer > 0) {
-      interval = setInterval(() => {
-        setOtpModal((prev) => ({ ...prev, timer: Math.max(0, prev.timer - 1) }));
-      }, 1000);
-    }
-    return () => {
-      if (interval) clearInterval(interval);
-    };
-  }, [otpModal.isOpen, otpModal.timer]);
-
-  const formatTimer = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${String(mins).padStart(2, '0')}:${String(secs).padStart(2, '0')}`;
-  };
-
   const authenticate = (user) => {
     const roleMap = {
       MEMBER: { key: 'member', path: '/member' },
@@ -119,7 +99,11 @@ export default function AuthPage() {
       throw new Error('Vai trò tài khoản không được hỗ trợ.');
     }
     authenticateUser(user, destination.key, user.token);
-    navigate(destination.path);
+    const allowedPrefix = destination.path;
+    const targetUrl = redirectFrom && (redirectFrom.startsWith(allowedPrefix) || redirectFrom === '/pricing')
+      ? redirectFrom
+      : destination.path;
+    navigate(targetUrl, { replace: true });
   };
 
   const getErrorMessage = async (response) => {
@@ -154,14 +138,12 @@ export default function AuthPage() {
         }),
       });
       if (!response.ok) {
-        // Parse error response
+        const rawBody = await response.text();
         let errorData = null;
         try {
-          errorData = await response.json();
+          errorData = rawBody ? JSON.parse(rawBody) : null;
         } catch {
-          // Nếu không parse được JSON, dùng text response
-          const errorText = await response.text();
-          throw new Error(errorText || `Đăng nhập thất bại (${response.status})`);
+          throw new Error(rawBody || `Đăng nhập thất bại (${response.status})`);
         }
 
         // Check nếu là lỗi PENDING_VERIFICATION
@@ -269,34 +251,6 @@ export default function AuthPage() {
     } finally {
       setIsSubmitting(false);
     }
-  };
-
-  const handleVerifyOtp = (e) => {
-    e.preventDefault();
-    if (otpModal.otpCode.trim().length !== 6) {
-      setAuthError('Mã xác thực OTP gồm 6 chữ số.');
-      return;
-    }
-    if (otpModal.timer <= 0) {
-      setAuthError('Mã OTP đã hết hạn 10 phút. Vui lòng bấm gửi lại mã.');
-      return;
-    }
-    // Verify success: activate account and authenticate
-    const activeUser = {
-      ...(otpModal.pendingUser || {}),
-      status: 'ACTIVE',
-    };
-    setOtpModal({ isOpen: false, email: '', pendingUser: null, otpCode: '', timer: 600 });
-    authenticate(activeUser);
-  };
-
-  const handleResendOtp = () => {
-    setOtpModal((prev) => ({
-      ...prev,
-      timer: 600,
-      otpCode: '',
-    }));
-    setAuthNotice(`Mã OTP mới đã được gửi lại tới ${otpModal.email}. Có hiệu lực trong 10 phút.`);
   };
 
   return (
@@ -842,11 +796,25 @@ export default function AuthPage() {
                       />
                       <span className="text-xs text-slate-600 font-medium leading-snug">
                         Tôi đồng ý với{' '}
-                        <button type="button" onClick={() => alert('Điều khoản dịch vụ bảo mật của F Sport Center.')} className="text-slate-900 font-bold hover:underline">
+                        <button
+                          type="button"
+                          onClick={() => setInfoDialog({
+                            title: 'Điều khoản dịch vụ',
+                            content: 'Hội viên tuân thủ nội quy an toàn tập luyện, đặt lịch trước và check-in đúng giờ tại quầy hoặc cổng tự động RFID/QR của F Sport Center.',
+                          })}
+                          className="text-slate-900 font-bold hover:underline cursor-pointer"
+                        >
                           Điều khoản dịch vụ
                         </button>{' '}
                         và{' '}
-                        <button type="button" onClick={() => alert('Chính sách bảo mật chuẩn y tế PAR-Q của F Sport Center.')} className="text-slate-900 font-bold hover:underline">
+                        <button
+                          type="button"
+                          onClick={() => setInfoDialog({
+                            title: 'Chính sách bảo mật',
+                            content: 'Thông tin cá nhân, chỉ số sức khỏe PAR-Q/InBody và lịch sử giao dịch của bạn chỉ được sử dụng cho vận hành hội viên tại F Sport Center và bảo mật theo quy định hiện hành.',
+                          })}
+                          className="text-slate-900 font-bold hover:underline cursor-pointer"
+                        >
                           Chính sách bảo mật
                         </button>{' '}
                         của F Sport Center.
@@ -881,7 +849,10 @@ export default function AuthPage() {
               <div className="flex items-center gap-3 font-medium">
                 <button
                   type="button"
-                  onClick={() => alert('Trung tâm trợ giúp: Vui lòng gọi 1900 8899 hoặc gặp bộ phận Lễ tân.')}
+                  onClick={() => setInfoDialog({
+                    title: 'Trung tâm trợ giúp',
+                    content: 'Cần hỗ trợ đăng nhập, xác thực OTP hoặc cấp lại mật khẩu, vui lòng gọi hotline 1900 8899 hoặc liên hệ trực tiếp bộ phận Lễ tân tại trung tâm.',
+                  })}
                   className="hover:text-slate-900 transition-colors cursor-pointer"
                 >
                   Trợ giúp
@@ -889,7 +860,10 @@ export default function AuthPage() {
                 <span>•</span>
                 <button
                   type="button"
-                  onClick={() => alert('Nội quy: Tuân thủ quy định trang phục thể thao và giờ check-in.')}
+                  onClick={() => setInfoDialog({
+                    title: 'Nội quy sân đấu',
+                    content: 'Vui lòng mang giày thể thao chuyên dụng, không mang thức ăn có mùi vào khu vực sân tập và đến check-in trước giờ đặt từ 10–15 phút.',
+                  })}
                   className="hover:text-slate-900 transition-colors cursor-pointer"
                 >
                   Nội quy sân đấu
@@ -901,89 +875,41 @@ export default function AuthPage() {
         </div>
       </main>
 
-      {/* OTP Verification Modal Dialog (Workflow Đăng Ký - Section 2.1 & 2.2) */}
-      {otpModal.isOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs animate-in fade-in duration-200 !m-0">
-          <div className="relative w-full max-w-md overflow-hidden bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 sm:p-8 space-y-5">
-            <div className="text-center space-y-2">
-              <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-50 text-orange-600 flex items-center justify-center shadow-inner">
-                <span className="material-symbols-outlined text-3xl">mark_email_read</span>
-              </div>
-              <h3 className="text-xl font-black text-slate-900 uppercase tracking-tight">
-                Xác Thực Tài Khoản Email
+      {infoDialog && (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="auth-info-dialog-title"
+          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs !m-0"
+          onClick={() => setInfoDialog(null)}
+        >
+          <div
+            className="w-full max-w-md bg-white rounded-3xl border border-slate-200 shadow-2xl p-6 space-y-4"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between gap-3">
+              <h3 id="auth-info-dialog-title" className="text-base font-black text-slate-900 uppercase tracking-tight">
+                {infoDialog.title}
               </h3>
-              <p className="text-xs text-slate-600 leading-relaxed">
-                Mã xác thực OTP gồm 6 chữ số đã được gửi tới{' '}
-                <strong className="text-slate-900 font-bold">{otpModal.email}</strong>.
-                Vui lòng nhập mã để kích hoạt tài khoản hội viên F Sport.
-              </p>
+              <button
+                type="button"
+                aria-label="Đóng hộp thoại"
+                onClick={() => setInfoDialog(null)}
+                className="w-8 h-8 rounded-xl text-slate-500 hover:bg-slate-100 hover:text-slate-900 flex items-center justify-center cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[20px]">close</span>
+              </button>
             </div>
-
-            <form onSubmit={handleVerifyOtp} className="space-y-4">
-              <div className="flex flex-col items-center gap-2">
-                <label htmlFor="otp-input" className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                  Mã Xác Thực OTP (6 số)
-                </label>
-                <input
-                  id="otp-input"
-                  type="text"
-                  required
-                  maxLength={6}
-                  autoFocus
-                  value={otpModal.otpCode}
-                  onChange={(e) => {
-                    const val = e.target.value.replace(/\D/g, '');
-                    setOtpModal((prev) => ({ ...prev, otpCode: val }));
-                    setAuthError('');
-                  }}
-                  placeholder="123456"
-                  className="w-48 text-center text-2xl font-black tracking-widest py-3 px-4 rounded-2xl border-2 border-orange-500 bg-orange-50/40 text-slate-900 outline-none shadow-sm focus:ring-4 focus:ring-orange-500/20"
-                />
-              </div>
-
-              {/* Countdown timer */}
-              <div className="flex items-center justify-center gap-1.5 text-xs">
-                <span className="material-symbols-outlined text-[16px] text-orange-600">timer</span>
-                <span className="text-slate-500 font-medium">Mã hết hạn sau:</span>
-                <span className={`font-mono font-bold ${otpModal.timer < 60 ? 'text-red-600 animate-pulse' : 'text-slate-800'}`}>
-                  {formatTimer(otpModal.timer)}
-                </span>
-              </div>
-
-              {authError && (
-                <p role="alert" className="p-2.5 rounded-xl border border-red-200 bg-red-50 text-center text-xs font-bold text-red-700">
-                  {authError}
-                </p>
-              )}
-
-              <div className="space-y-2 pt-2">
-                <button
-                  type="submit"
-                  disabled={otpModal.otpCode.length !== 6}
-                  className="w-full py-3.5 rounded-xl bg-orange-500 hover:bg-orange-600 disabled:opacity-50 text-white text-xs uppercase tracking-wider font-black shadow-lg shadow-orange-500/30 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                >
-                  <span className="material-symbols-outlined text-[18px]">verified</span>
-                  <span>XÁC THỰC & KÍCH HOẠT NGAY</span>
-                </button>
-
-                <div className="flex items-center justify-between pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setOtpModal({ isOpen: false, email: '', pendingUser: null, otpCode: '', timer: 600 })}
-                    className="text-xs text-slate-500 hover:text-slate-800 font-semibold cursor-pointer"
-                  >
-                    Hủy bỏ
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleResendOtp}
-                    className="text-xs text-orange-600 hover:underline font-bold cursor-pointer"
-                  >
-                    Gửi lại mã OTP
-                  </button>
-                </div>
-              </div>
-            </form>
+            <p className="text-xs sm:text-sm text-slate-600 leading-relaxed font-medium">
+              {infoDialog.content}
+            </p>
+            <button
+              type="button"
+              onClick={() => setInfoDialog(null)}
+              className="w-full py-2.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-white text-xs font-black uppercase tracking-wider cursor-pointer"
+            >
+              Đã hiểu
+            </button>
           </div>
         </div>
       )}

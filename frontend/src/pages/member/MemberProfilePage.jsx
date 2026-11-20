@@ -245,7 +245,7 @@ export default function MemberProfilePage() {
               <span>Đổi Mật Khẩu</span>
             </Link>
             <Link
-              to="/pricing"
+              to="/member/packages"
               className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-semibold text-xs transition-all shadow-sm shadow-orange-500/20 cursor-pointer"
             >
               <span className="material-symbols-outlined text-[18px]">upgrade</span>
@@ -724,7 +724,12 @@ export default function MemberProfilePage() {
 
                 <div className="p-3.5 bg-orange-50 border border-orange-200 rounded-2xl text-xs text-orange-800 font-bold flex items-center gap-2">
                   <span className="material-symbols-outlined text-[20px] text-orange-600">insights</span>
-                  <span>Chỉ số BMI tính toán tự động: {(inbodyForm.weight / Math.pow(inbodyForm.height / 100, 2)).toFixed(1)} (Bình thường / Thể hình)</span>
+                  <span>
+                    Chỉ số BMI tính toán tự động:{' '}
+                    {Number(inbodyForm.height) > 0 && Number(inbodyForm.weight) > 0
+                      ? `${(Number(inbodyForm.weight) / Math.pow(Number(inbodyForm.height) / 100, 2)).toFixed(1)} (Bình thường / Thể hình)`
+                      : 'Chưa đủ chiều cao & cân nặng để tính'}
+                  </span>
                 </div>
 
                 <button

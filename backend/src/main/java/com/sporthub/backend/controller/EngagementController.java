@@ -72,6 +72,9 @@ public class EngagementController {
     private final SystemSettingRepository systemSettingRepository;
     private final com.sporthub.backend.service.FacilityCourtSyncService syncService;
 
+    @Autowired(required = false)
+    private com.sporthub.backend.repository.EquipmentLoanRepository equipmentLoanRepository;
+
     @Autowired
     public EngagementController(
             FeedbackRepository feedbackRepository,
@@ -428,11 +431,14 @@ public class EngagementController {
             throw new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy lịch bảo trì.");
         }
         Long courtId = existing.getCourtId();
+        boolean wasLocker = existing.getReason() != null
+                && existing.getReason().contains("[LOCKED_BY_MAINTENANCE]")
+                && !existing.getReason().contains("[REOPENED]");
         courtRepository.findByIdForUpdate(courtId).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy sân."));
         maintenanceRepository.findByIdForUpdate(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Không tìm thấy bảo trì."));
         maintenanceRepository.deleteById(id);
         if (syncService != null) {
-            syncService.syncFromMaintenanceDelete(courtId);
+            syncService.syncFromMaintenanceDelete(courtId, wasLocker);
         }
         engagementService.audit(actorId(auth), actorRole(auth), "MAINTENANCE_DELETED", "id=" + id);
         return Map.of("deleted", true);
@@ -497,18 +503,22 @@ public class EngagementController {
 
         List<Map<String, Object>> coachStats = new ArrayList<>();
         BigDecimal totalCoachPayout = BigDecimal.ZERO;
+        LocalDateTime now = LocalDateTime.now();
+        BigDecimal commissionRate = BigDecimal.valueOf(
+                com.sporthub.backend.util.SystemPolicyHelper.coachCommissionPercent(systemSettingRepository));
 
         for (User coach : coaches) {
-            List<ClassSession> sessions = classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId());
-            int sessionCount = (int) sessions.stream().filter(s -> !"CANCELLED".equalsIgnoreCase(s.getStatus())).count();
+            List<ClassSession> allCoachSessions = classSessionRepository.findByCoachIdOrderByStartTimeAsc(coach.getUserId());
+            List<ClassSession> sessions = allCoachSessions.stream()
+                    .filter(s -> !"CANCELLED".equalsIgnoreCase(s.getStatus()))
+                    .filter(s -> s.getStartTime() == null || !s.getStartTime().isAfter(now))
+                    .toList();
+            int sessionCount = sessions.size();
             int totalStudents = 0;
             BigDecimal coachRevenue = BigDecimal.ZERO;
             BigDecimal coachCommission = BigDecimal.ZERO;
 
             for (ClassSession s : sessions) {
-                if ("CANCELLED".equalsIgnoreCase(s.getStatus())) {
-                    continue;
-                }
                 List<Booking> bookings = bookingRepository.findBySessionIdInAndStatusIn(
                         List.of(s.getSessionId()), List.of("BOOKED", "CONFIRMED"));
                 int students = bookings.size();
@@ -517,7 +527,7 @@ public class EngagementController {
                 BigDecimal sRevenue = price.multiply(BigDecimal.valueOf(students));
                 coachRevenue = coachRevenue.add(sRevenue);
 
-                BigDecimal commission = sRevenue.multiply(BigDecimal.valueOf(40)).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
+                BigDecimal commission = sRevenue.multiply(commissionRate).divide(BigDecimal.valueOf(100), 2, RoundingMode.HALF_UP);
                 if (commission.compareTo(BigDecimal.valueOf(200000)) < 0) {
                     commission = BigDecimal.valueOf(200000);
                 }
@@ -526,7 +536,7 @@ public class EngagementController {
 
             // Đánh giá trung bình
             List<Feedback> feedbacks = feedbackRepository.findByCoachIdOrderByCreatedAtDesc(coach.getUserId());
-            Double avgRating = 5.0;
+            Double avgRating = 0.0;
             if (!feedbacks.isEmpty()) {
                 double sum = feedbacks.stream().filter(f -> f.getRating() != null).mapToInt(Feedback::getRating).sum();
                 long count = feedbacks.stream().filter(f -> f.getRating() != null).count();
@@ -558,13 +568,12 @@ public class EngagementController {
                 .toList();
 
         List<Map<String, Object>> recStats = new ArrayList<>();
-        int recCount = Math.max(1, receptionists.size());
 
         for (User rec : receptionists) {
             int checkIns = 0;
             if (memberCheckInRepository != null) {
                 checkIns = (int) memberCheckInRepository.findAll().stream()
-                        .filter(c -> recCount == 1 || (c.getRecordedBy() != null && c.getRecordedBy().equals(rec.getUserId())))
+                        .filter(c -> c.getRecordedBy() != null && c.getRecordedBy().equals(rec.getUserId()))
                         .count();
             }
             BigDecimal posSales = BigDecimal.ZERO;
@@ -575,12 +584,22 @@ public class EngagementController {
                         .filter(p -> ("COMPLETED".equalsIgnoreCase(p.getPaymentStatus()) || "PAID".equalsIgnoreCase(p.getPaymentStatus()))
                                 && !"REFUNDED".equalsIgnoreCase(p.getPaymentStatus())
                                 && !"CANCELLED".equalsIgnoreCase(p.getPaymentStatus()))
-                        .filter(p -> recCount == 1 || (p.getApprovedBy() != null && p.getApprovedBy().equals(recUserId)))
+                        .filter(p -> p.getApprovedBy() != null && p.getApprovedBy().equals(recUserId))
                         .toList();
                 posSales = payments.stream()
                         .map(p -> p.getAmount() != null ? p.getAmount() : BigDecimal.ZERO)
                         .reduce(BigDecimal.ZERO, BigDecimal::add);
                 txCount = payments.size();
+            }
+            if (equipmentLoanRepository != null) {
+                var returnedLoans = equipmentLoanRepository.findByStatusIgnoreCaseOrderByLoanedAtDesc("RETURNED").stream()
+                        .filter(loan -> loan.getRecordedBy() != null && loan.getRecordedBy().equals(rec.getUserId()))
+                        .toList();
+                BigDecimal loanRevenue = returnedLoans.stream()
+                        .map(loan -> loan.getRentalFee() != null ? loan.getRentalFee() : BigDecimal.ZERO)
+                        .reduce(BigDecimal.ZERO, BigDecimal::add);
+                posSales = posSales.add(loanRevenue);
+                txCount += returnedLoans.size();
             }
 
             Map<String, Object> row = new LinkedHashMap<>();
@@ -609,10 +628,12 @@ public class EngagementController {
         requireRole(auth, "MANAGER", "ADMIN");
         Map<String, Object> config = new LinkedHashMap<>();
         if (systemSettingRepository != null) {
-            systemSettingRepository.findAll().forEach(s -> config.put(s.getSettingKey(), s.getSettingValue()));
+            for (String key : List.of("ai_enabled", "ai_model", "ai_temperature", "ai_system_prompt", "ai_max_tokens")) {
+                systemSettingRepository.findById(key).ifPresent(s -> config.put(s.getSettingKey(), s.getSettingValue()));
+            }
         }
         if (!config.containsKey("ai_enabled")) config.put("ai_enabled", "true");
-        if (!config.containsKey("ai_model")) config.put("ai_model", "gpt-4o-mini");
+        if (!config.containsKey("ai_model")) config.put("ai_model", "gemini-flash-lite-latest");
         if (!config.containsKey("ai_temperature")) config.put("ai_temperature", "0.7");
         if (!config.containsKey("ai_system_prompt")) {
             config.put("ai_system_prompt", "Bạn là Trợ lý AI Thể thao chuyên nghiệp của F-Sport Center. Bạn có nhiệm vụ giải đáp mọi thắc mắc của hội viên về lịch học, kỹ thuật tập luyện, dinh dưỡng thể thao và nội quy câu lạc bộ.");
@@ -626,8 +647,12 @@ public class EngagementController {
             @RequestBody Map<String, String> request,
             Authentication auth) {
         requireRole(auth, "MANAGER", "ADMIN");
+        Set<String> allowedAiKeys = Set.of("ai_enabled", "ai_model", "ai_temperature", "ai_system_prompt", "ai_max_tokens");
         if (systemSettingRepository != null && request != null) {
             for (Map.Entry<String, String> entry : request.entrySet()) {
+                if (entry.getKey() == null || !allowedAiKeys.contains(entry.getKey()) || entry.getValue() == null) {
+                    continue;
+                }
                 SystemSetting setting = systemSettingRepository.findById(entry.getKey())
                         .orElse(new SystemSetting(entry.getKey(), entry.getValue(), LocalDateTime.now()));
                 setting.setSettingValue(entry.getValue());

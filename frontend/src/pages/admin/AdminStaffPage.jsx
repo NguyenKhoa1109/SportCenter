@@ -672,7 +672,7 @@ export default function AdminStaffPage() {
               <div className="p-5 border-b border-slate-100">
                 <div className="flex items-center gap-2">
                   <span className="w-2.5 h-2.5 rounded-full bg-blue-500"></span>
-                  <h2 className="text-base font-bold text-slate-900">KPI Hiệu Suất Nhân Viên Lễ Tân &amp; Bán Hàng (REC-KPI)</h2>
+                  <h2 className="text-base font-bold text-slate-900">KPI Hiệu Suất Nhân Viên Lễ Tân &amp; Bán Hàng</h2>
                 </div>
                 <p className="text-xs text-slate-500 mt-0.5">
                   Thống kê số lượt kiểm soát check-in, số giao dịch POS và doanh số bán gói thành viên trực tiếp

@@ -36,6 +36,50 @@ export default function CoachIncomePage() {
         : Number(incomeData.commissionRate)
       : 40;
 
+  const handleExportCsv = () => {
+    const sessions = incomeData?.sessions || [];
+    if (sessions.length === 0) {
+      showToast('Chưa có dữ liệu', 'Chưa có ca dạy nào để xuất bảng kê.', 'warning');
+      return;
+    }
+    const escapeCell = (value) => `"${String(value ?? '').replaceAll('"', '""')}"`;
+    const headers = [
+      'Mã ca',
+      'Nội dung ca dạy',
+      'Bộ môn',
+      'Sân tập',
+      'Thời gian bắt đầu',
+      'Sĩ số',
+      'Đơn giá lớp',
+      'Doanh thu lớp',
+      `Thù lao HLV (${commissionPercent.toFixed(0)}%)`,
+      'Trạng thái',
+    ];
+    const rows = sessions.map((row) => [
+      `SES-${row.sessionId}`,
+      row.className || '',
+      row.sportName || '',
+      row.courtName || '',
+      row.startTime ? new Date(row.startTime).toLocaleString('vi-VN') : '',
+      row.studentsCount ?? row.enrolledStudents ?? 0,
+      Number(row.priceAmount ?? row.classPrice ?? 0),
+      Number(row.sessionRevenue ?? row.totalClassRevenue ?? 0),
+      Number(row.coachCommission ?? row.coachIncome ?? 0),
+      row.status || 'CONFIRMED',
+    ]);
+    const csvContent = `\uFEFF${[headers, ...rows].map((r) => r.map(escapeCell).join(',')).join('\n')}`;
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `bang-ke-thu-lao-hlv-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+    showToast('Đã xuất bảng kê', 'Tệp CSV bảng kê thù lao đã được tải xuống.', 'success');
+  };
+
   return (
     <CoachLayout>
       <div className="space-y-6">
@@ -81,7 +125,7 @@ export default function CoachIncomePage() {
             <div className="mt-2 text-2xl font-black text-blue-600 tracking-tight">
               {`${commissionPercent.toFixed(0)}%`}
             </div>
-            <div className="mt-1 text-xs text-slate-500">40% doanh thu mỗi lớp nhóm</div>
+            <div className="mt-1 text-xs text-slate-500">{commissionPercent.toFixed(0)}% doanh thu mỗi lớp nhóm</div>
           </div>
 
           <div className="bg-white rounded-2xl border border-slate-200 p-5 shadow-sm">
@@ -113,11 +157,11 @@ export default function CoachIncomePage() {
             </div>
             <button
               type="button"
-              onClick={() => showToast('Tải phiếu lương', 'Đang kết xuất bảng kê chi tiết thù lao PDF...', 'success')}
+              onClick={handleExportCsv}
               className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer self-start sm:self-auto"
             >
               <span className="material-symbols-outlined text-[16px]">download</span>
-              <span>Tải Bảng Kê (PDF)</span>
+              <span>Tải Bảng Kê (CSV)</span>
             </button>
           </div>
 

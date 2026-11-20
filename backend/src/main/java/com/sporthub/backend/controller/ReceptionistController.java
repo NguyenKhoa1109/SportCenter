@@ -624,8 +624,14 @@ public class ReceptionistController {
         if (!email.matches("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$")) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Địa chỉ email không hợp lệ.");
         }
+        if (!phone.matches("^[0-9]{10,15}$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số điện thoại phải gồm 10 đến 15 chữ số.");
+        }
         if (password.length() < 8) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Mật khẩu phải có ít nhất 8 ký tự.");
+        }
+        if (userRepository.existsByPhone(phone)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Số điện thoại này đã được sử dụng bởi tài khoản khác.");
         }
         
         // Check email availability với logic theo status
@@ -655,10 +661,25 @@ public class ReceptionistController {
                 throw new ResponseStatusException(HttpStatus.FORBIDDEN, "Lễ tân chỉ được phép tạo tài khoản Hội viên (MEMBER).");
             }
         } else {
-            // Manager tạo ở trang quản trị: cả 4 vai trò
-            if (!List.of("MEMBER", "COACH", "RECEPTIONIST", "MANAGER", "ADMIN").contains(targetRole)) {
+            // Manager tạo ở trang quản trị: chuẩn hóa ADMIN -> MANAGER
+            if ("ADMIN".equals(targetRole)) {
+                targetRole = "MANAGER";
+            }
+            if (!List.of("MEMBER", "COACH", "RECEPTIONIST", "MANAGER").contains(targetRole)) {
                 throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Vai trò không hợp lệ.");
             }
+        }
+
+        String cleanRfid = request.rfidCode() == null || request.rfidCode().isBlank() ? null : request.rfidCode().trim();
+        if (cleanRfid != null && userRepository.existsByRfidCodeAndUserIdNot(cleanRfid, -1L)) {
+            throw new ResponseStatusException(HttpStatus.CONFLICT, "Mã thẻ RFID này đã được cấp cho tài khoản khác.");
+        }
+        String cleanGender = request.gender() == null || request.gender().isBlank() ? null : request.gender().trim().toUpperCase(Locale.ROOT);
+        String cleanAddress = request.address() == null || request.address().isBlank() ? null : request.address().trim();
+        String cleanEmergencyName = request.emergencyContactName() == null || request.emergencyContactName().isBlank() ? null : request.emergencyContactName().trim();
+        String cleanEmergencyPhone = request.emergencyContactPhone() == null || request.emergencyContactPhone().isBlank() ? null : request.emergencyContactPhone().trim();
+        if (cleanEmergencyPhone != null && !cleanEmergencyPhone.matches("^[0-9]{10,15}$")) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Số điện thoại liên hệ khẩn cấp phải gồm 10 đến 15 chữ số.");
         }
 
         // Rule: TẤT CẢ user được tạo qua Admin Panel đều phải đổi password lần đầu
@@ -671,6 +692,12 @@ public class ReceptionistController {
                 .role(targetRole)
                 .status("ACTIVE")
                 .requirePasswordChange(requirePasswordChange)
+                .dateOfBirth(request.dateOfBirth())
+                .gender(cleanGender)
+                .address(cleanAddress)
+                .rfidCode(cleanRfid)
+                .emergencyContactName(cleanEmergencyName)
+                .emergencyContactPhone(cleanEmergencyPhone)
                 .build();
         if ("COACH".equals(targetRole)) {
             CoachSportHelper.syncCoachSports(

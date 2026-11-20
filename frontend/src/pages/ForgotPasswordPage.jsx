@@ -217,7 +217,7 @@ export default function ForgotPasswordPage() {
                 </div>
                 <p className="text-[11px] text-slate-500 mt-1 flex items-center gap-1">
                   <span className="material-symbols-outlined text-[14px] text-slate-400">info</span>
-                  <span>Để bảo mật, hệ thống sẽ gửi mã OTP 6 số (hiệu lực 5 phút) đến email này.</span>
+                  <span>Để bảo mật, hệ thống sẽ gửi mã OTP 6 số (hiệu lực 10 phút) đến email này.</span>
                 </p>
               </div>
 

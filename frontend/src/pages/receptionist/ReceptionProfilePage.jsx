@@ -103,6 +103,15 @@ export default function ReceptionProfilePage() {
   const handleAvatarFileChange = async (e) => {
     const file = e.target.files?.[0];
     if (!file) return;
+    if (file.size > 5 * 1024 * 1024) {
+      showToast({
+        title: 'Tệp quá lớn',
+        message: 'Vui lòng chọn ảnh có dung lượng tối đa 5MB.',
+        type: 'warning',
+      });
+      if (e.target) e.target.value = '';
+      return;
+    }
 
     try {
       setAvatarUploading(true);

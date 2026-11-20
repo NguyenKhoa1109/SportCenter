@@ -20,6 +20,7 @@ export default function ReceptionEquipmentPage() {
 
   // Return & Checkout Modal
   const [returningLoan, setReturningLoan] = useState(null);
+  const [returnReceipt, setReturnReceipt] = useState(null);
   const [paymentMethod, setPaymentMethod] = useState('CASH');
   const [isReturning, setIsReturning] = useState(false);
 
@@ -168,6 +169,17 @@ export default function ReceptionEquipmentPage() {
         `Đã nhận lại ${returningLoan.quantity} x "${returningLoan.itemName}". Phí thu: ${actualFee.toLocaleString()}đ${methodSummary}.`,
         'success'
       );
+      setReturnReceipt({
+        loanId: returned?.loanId ?? returningLoan.loanId,
+        memberName: returned?.memberName ?? returningLoan.memberName,
+        phone: returned?.phone ?? returningLoan.phone,
+        itemName: returned?.itemName ?? returningLoan.itemName,
+        quantity: returned?.quantity ?? returningLoan.quantity,
+        loanedAt: returned?.loanedAt ?? returningLoan.loanedAt,
+        returnedAt: returned?.returnedAt || new Date().toISOString(),
+        rentalFee: actualFee,
+        paymentMethod: actualFee > 0 ? (returned?.paymentMethod || 'CASH') : 'FREE',
+      });
       setReturningLoan(null);
       await loadEquipments();
     } catch (err) {
@@ -556,14 +568,13 @@ export default function ReceptionEquipmentPage() {
                   </div>
 
                   <div className="space-y-1.5">
-                    <label className="font-bold uppercase text-slate-600 text-[11px]">Hình thức thu tiền</label>
+                    <label className="font-bold uppercase text-slate-600 text-[11px]">Hình thức thu tiền tại quầy</label>
                     <select
                       value={paymentMethod}
                       onChange={(e) => setPaymentMethod(e.target.value)}
                       className="w-full p-2.5 rounded-xl border border-slate-300 text-xs font-bold text-slate-800 outline-none cursor-pointer"
                     >
                       <option value="CASH">Tiền mặt tại quầy (CASH)</option>
-                      <option value="VNPAY">Thanh toán VNPay (VNPAY)</option>
                     </select>
                   </div>
                 </div>
@@ -589,6 +600,85 @@ export default function ReceptionEquipmentPage() {
                 className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white text-xs font-bold uppercase tracking-wider shadow-sm transition-all cursor-pointer"
               >
                 {isReturning ? 'Đang xử lý...' : 'Hoàn tất & In biên lai'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Printable Equipment Return Receipt Modal */}
+      {returnReceipt && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs print:p-0 print:bg-white print:static !m-0">
+          <div className="bg-white rounded-3xl p-6 max-w-sm w-full shadow-2xl border border-slate-200 space-y-4 print:shadow-none print:border-none print:max-w-none print:w-full">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3 print:hidden">
+              <div className="flex items-center gap-2">
+                <span className="material-symbols-outlined text-emerald-600 text-[20px]">receipt_long</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-slate-800">Biên Lai Hoàn Trả Dụng Cụ</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setReturnReceipt(null)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-600 flex items-center justify-center cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[18px]">close</span>
+              </button>
+            </div>
+
+            <div className="p-4 bg-white text-slate-900 font-mono text-[11px] leading-tight space-y-2.5 border border-dashed border-slate-300 rounded-xl print:border-none print:p-0">
+              <div className="text-center pb-2 border-b border-dashed border-slate-400">
+                <div className="font-sans font-black text-sm uppercase text-slate-900">F SPORT CENTER</div>
+                <div className="font-bold text-xs pt-1 uppercase">BIÊN LAI TRẢ DỤNG CỤ</div>
+                <div className="text-[10px] text-slate-500">Phiếu mượn #{returnReceipt.loanId}</div>
+              </div>
+              <div className="space-y-1 text-[10px]">
+                <div className="flex justify-between">
+                  <span>Hội viên:</span>
+                  <strong>{returnReceipt.memberName}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Dụng cụ:</span>
+                  <strong>{returnReceipt.quantity}x {returnReceipt.itemName}</strong>
+                </div>
+                <div className="flex justify-between">
+                  <span>Giờ mượn:</span>
+                  <span>{formatDateTime(returnReceipt.loanedAt)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Giờ trả:</span>
+                  <span>{formatDateTime(returnReceipt.returnedAt)}</span>
+                </div>
+              </div>
+              <div className="pt-2 border-t border-dashed border-slate-400 space-y-1">
+                <div className="flex justify-between font-bold text-xs">
+                  <span>PHÍ THUÊ THU:</span>
+                  <span className="text-orange-600">
+                    {Number(returnReceipt.rentalFee || 0) > 0
+                      ? `${Number(returnReceipt.rentalFee).toLocaleString()}đ`
+                      : 'Miễn phí'}
+                  </span>
+                </div>
+                <div className="flex justify-between text-[10px]">
+                  <span>Thanh toán:</span>
+                  <span>{formatMethodLabel(returnReceipt.paymentMethod, returnReceipt.rentalFee)}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 print:hidden">
+              <button
+                type="button"
+                onClick={() => window.print()}
+                className="flex-1 py-2.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold uppercase tracking-wider flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                <span className="material-symbols-outlined text-[16px]">print</span>
+                <span>In biên lai</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setReturnReceipt(null)}
+                className="py-2.5 px-4 rounded-xl border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                Đóng
               </button>
             </div>
           </div>

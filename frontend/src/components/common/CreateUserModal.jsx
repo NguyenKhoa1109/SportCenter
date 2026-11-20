@@ -23,8 +23,11 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess, memberOnly
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
   const [sports, setSports] = useState([]);
-  const [sportsLoading, setSportsLoading] = useState(false);
+  const [sportsLoadedFor, setSportsLoadedFor] = useState(null);
   const [selectedSportIds, setSelectedSportIds] = useState([]);
+
+  const needsCoachSports = isOpen && canSelectRole && role === 'COACH';
+  const sportsLoading = needsCoachSports && sportsLoadedFor !== currentRole;
 
   useEffect(() => {
     if (isOpen) {
@@ -33,9 +36,8 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess, memberOnly
   }, [isOpen, defaultRole]);
 
   useEffect(() => {
-    if (!isOpen || !canSelectRole || role !== 'COACH' || sports.length > 0 || sportsLoading) return;
+    if (!needsCoachSports || sportsLoadedFor === currentRole) return;
     let active = true;
-    setSportsLoading(true);
     const fetcher = currentRole === 'receptionist' ? getReceptionistDomainSports : getManagerDomainSports;
     fetcher()
       .then((rows) => {
@@ -45,14 +47,14 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess, memberOnly
         if (active) setSports([]);
       })
       .finally(() => {
-        if (active) setSportsLoading(false);
+        if (active) setSportsLoadedFor(currentRole);
       });
     return () => {
       active = false;
     };
-  }, [isOpen, canSelectRole, role, sports.length, sportsLoading, currentRole]);
+  }, [needsCoachSports, sportsLoadedFor, currentRole]);
 
-  const handleRoleChange = async (nextRole) => {
+  const handleRoleChange = (nextRole) => {
     if (!canSelectRole) {
       setRole('MEMBER');
       setSelectedSportIds([]);
@@ -61,18 +63,6 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess, memberOnly
     setRole(nextRole);
     if (nextRole !== 'COACH') {
       setSelectedSportIds([]);
-      return;
-    }
-    if (sports.length > 0 || sportsLoading) return;
-    setSportsLoading(true);
-    try {
-      const fetcher = currentRole === 'receptionist' ? getReceptionistDomainSports : getManagerDomainSports;
-      const rows = await fetcher();
-      setSports(Array.isArray(rows) ? rows : []);
-    } catch {
-      setSports([]);
-    } finally {
-      setSportsLoading(false);
     }
   };
 
@@ -100,6 +90,7 @@ export default function CreateUserModal({ isOpen, onClose, onSuccess, memberOnly
     setEmergencyContactName('');
     setEmergencyContactPhone('');
     setSelectedSportIds([]);
+    setSportsLoadedFor(null);
     setError('');
   };
 

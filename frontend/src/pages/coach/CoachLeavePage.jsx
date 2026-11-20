@@ -5,7 +5,17 @@ import { TableSkeleton } from '../../components/common/Skeleton';
 import { createCoachLeaveRequest, getCoachLeaveRequests } from '../../services/coachApi';
 import { useApp } from '../../context/AppContext';
 
-const LEAVE_STORAGE_KEY = 'sports_center_coach_leave_requests';
+const getLeaveStorageKey = (coachId) => (
+  coachId ? `sports_center_coach_leave_requests_${coachId}` : 'sports_center_coach_leave_requests'
+);
+
+const getTodayLocalDate = () => {
+  const now = new Date();
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, '0');
+  const d = String(now.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+};
 
 const LEAVE_TYPE_LABELS = {
   SICK_LEAVE: 'Nghỉ ốm / Y tế',
@@ -22,10 +32,12 @@ const INITIAL_LEAVE_FORM = {
 };
 
 export default function CoachLeavePage() {
-  const { showToast } = useApp();
+  const { showToast, currentUser } = useApp();
+  const storageKey = getLeaveStorageKey(currentUser?.id);
+  const todayStr = getTodayLocalDate();
   const [leaveRequests, setLeaveRequests] = useState(() => {
     try {
-      const stored = localStorage.getItem(LEAVE_STORAGE_KEY);
+      const stored = localStorage.getItem(storageKey);
       return stored ? JSON.parse(stored) : [];
     } catch {
       return [];
@@ -39,11 +51,17 @@ export default function CoachLeavePage() {
 
   useEffect(() => {
     let active = true;
+    try {
+      const cached = localStorage.getItem(storageKey);
+      if (cached) setLeaveRequests(JSON.parse(cached));
+    } catch {
+      // ignore storage errors
+    }
     getCoachLeaveRequests()
       .then((data) => {
         if (active && Array.isArray(data)) {
           setLeaveRequests(data);
-          localStorage.setItem(LEAVE_STORAGE_KEY, JSON.stringify(data));
+          localStorage.setItem(storageKey, JSON.stringify(data));
         }
       })
       .catch((err) => {
@@ -55,12 +73,16 @@ export default function CoachLeavePage() {
     return () => {
       active = false;
     };
-  }, []);
+  }, [storageKey]);
 
   const handleSubmitLeave = async (e) => {
     e.preventDefault();
     if (!leaveForm.startDate || !leaveForm.endDate || !leaveForm.reason.trim()) {
       showToast('Thiếu thông tin', 'Vui lòng chọn ngày bắt đầu, ngày kết thúc và lý do xin nghỉ.', 'warning');
+      return;
+    }
+    if (leaveForm.startDate < todayStr) {
+      showToast('Ngày không hợp lệ', 'Ngày bắt đầu xin nghỉ không được ở trong quá khứ.', 'warning');
       return;
     }
     if (leaveForm.endDate < leaveForm.startDate) {
@@ -78,7 +100,7 @@ export default function CoachLeavePage() {
       });
       setLeaveRequests((prev) => {
         const updated = [created, ...prev];
-        localStorage.setItem(LEAVE_STORAGE_KEY, JSON.stringify(updated));
+        localStorage.setItem(storageKey, JSON.stringify(updated));
         return updated;
       });
       showToast(
@@ -221,8 +243,15 @@ export default function CoachLeavePage() {
                             : 'Chờ Manager duyệt'}
                         </span>
                       </td>
-                      <td className="px-5 py-4 text-slate-500 text-[11px]">
-                        {req.approvedBy || req.rejectionReason || 'Đang thẩm định'}
+                      <td className="px-5 py-4 text-slate-600 text-[11px] space-y-0.5">
+                        <div>
+                          {req.approvedByName || (req.approvedBy ? `Quản lý #${req.approvedBy}` : null) || req.rejectionReason || 'Đang thẩm định'}
+                        </div>
+                        {req.reassignedCoachName && (
+                          <div className="text-orange-700 font-semibold">
+                            HLV dạy thay: {req.reassignedCoachName}
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))}
@@ -285,6 +314,7 @@ export default function CoachLeavePage() {
                   id="leave-start-date"
                   type="date"
                   required
+                  min={todayStr}
                   value={leaveForm.startDate}
                   onChange={(e) => setLeaveForm({ ...leaveForm, startDate: e.target.value })}
                   className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-orange-500"
@@ -298,6 +328,7 @@ export default function CoachLeavePage() {
                   id="leave-end-date"
                   type="date"
                   required
+                  min={leaveForm.startDate || todayStr}
                   value={leaveForm.endDate}
                   onChange={(e) => setLeaveForm({ ...leaveForm, endDate: e.target.value })}
                   className="w-full rounded-xl border border-slate-300 p-2.5 text-xs font-semibold text-slate-800 outline-none focus:border-orange-500"

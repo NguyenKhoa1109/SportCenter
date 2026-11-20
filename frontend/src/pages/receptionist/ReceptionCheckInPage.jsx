@@ -4,6 +4,7 @@ import ReceptionistLayout from '../../components/layouts/ReceptionistLayout';
 import { apiRequest } from '../../services/apiClient';
 import { checkInReceptionMember, lookupReceptionCard } from '../../services/receptionistApi';
 import { getTierBadgeStyle } from '../../utils/memberMemberships';
+import { getAvatarImageUrl } from '../../utils/avatarHelper';
 
 const formatDateTime = (value) => new Date(value).toLocaleString('vi-VN', {
   dateStyle: 'short',
@@ -296,8 +297,8 @@ export default function ReceptionCheckInPage() {
               <div className="md:col-span-4 flex flex-col items-center text-center p-5 bg-slate-50 rounded-2xl border border-slate-200">
                 <p className="mb-3 text-xs font-bold text-slate-600">1. Đối chiếu đúng học viên</p>
                 <div className="w-28 h-28 rounded-2xl overflow-hidden border-4 border-white shadow-sm flex items-center justify-center bg-slate-800">
-                  {cardProfile.avatar ? (
-                    <img src={cardProfile.avatar} alt={cardProfile.fullName} className="w-full h-full object-cover" />
+                  {getAvatarImageUrl(cardProfile.avatar) ? (
+                    <img src={getAvatarImageUrl(cardProfile.avatar)} alt={cardProfile.fullName} className="w-full h-full object-cover" />
                   ) : (
                     <span className="text-3xl font-black text-white">
                       {cardProfile.fullName?.slice(0, 2).toUpperCase() || 'MB'}

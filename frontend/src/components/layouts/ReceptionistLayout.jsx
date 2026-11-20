@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import PortalLayout from './PortalLayout';
 import { useApp } from '../../context/AppContext';
 import { apiRequest } from '../../services/apiClient';
@@ -6,8 +6,32 @@ import { apiRequest } from '../../services/apiClient';
 export default function ReceptionistLayout({ children }) {
   const { currentUser, showToast } = useApp();
   const [showRfidModal, setShowRfidModal] = useState(false);
+  const [rfidCandidates, setRfidCandidates] = useState([]);
+  const [loadingCandidates, setLoadingCandidates] = useState(false);
 
   const [isScanning, setIsScanning] = useState(false);
+
+  useEffect(() => {
+    if (!showRfidModal) return;
+    let active = true;
+    setLoadingCandidates(true);
+    apiRequest('/receptionist/members?query=&page=0&size=8')
+      .then((res) => {
+        if (!active) return;
+        const rows = Array.isArray(res?.content) ? res.content : [];
+        const sorted = [...rows].sort((a, b) => (b.rfidCode ? 1 : 0) - (a.rfidCode ? 1 : 0));
+        setRfidCandidates(sorted.slice(0, 4));
+      })
+      .catch(() => {
+        if (active) setRfidCandidates([]);
+      })
+      .finally(() => {
+        if (active) setLoadingCandidates(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [showRfidModal]);
 
   const receptionistMenu = [
     {
@@ -156,27 +180,31 @@ export default function ReceptionistLayout({ children }) {
             </div>
 
             <div className="space-y-2">
-              <label className="text-xs font-bold uppercase text-slate-700">Quẹt nhanh thẻ mẫu (Demo RFID):</label>
+              <label className="text-xs font-bold uppercase text-slate-700">Quẹt nhanh thẻ hội viên trên hệ thống:</label>
               <div className="space-y-2">
-                {[
-                  { id: 9, name: 'Nguyễn Anh Khoa', code: 'RFID-KHOA-009', desc: 'Gói VIP Active · Hợp lệ' },
-                  { id: 10, name: 'Hoàng Thị Ngọc', code: 'RFID-NGOC-010', desc: 'Thẻ Hội Viên Mẫu · Hợp lệ' },
-                  { id: 11, name: 'Bùi Huy Hoàng', code: 'RFID-HOANG-011', desc: 'Hội Viên Tennis' },
-                ].map((demo) => (
-                  <button
-                    key={demo.id}
-                    type="button"
-                    disabled={isScanning}
-                    onClick={() => handleSimulateScan(demo.id, demo.name)}
-                    className="w-full p-2.5 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 flex items-center justify-between text-left transition cursor-pointer"
-                  >
-                    <div>
-                      <div className="text-xs font-bold text-slate-900">{demo.name}</div>
-                      <div className="text-[10px] text-slate-500 font-mono">{demo.code} · {demo.desc}</div>
-                    </div>
-                    <span className="material-symbols-outlined text-orange-500 text-[18px]">contactless</span>
-                  </button>
-                ))}
+                {loadingCandidates ? (
+                  <p className="text-xs text-slate-500 py-2">Đang tải danh sách thẻ RFID...</p>
+                ) : rfidCandidates.length === 0 ? (
+                  <p className="text-xs text-slate-500 py-2">Chưa có hội viên phù hợp trong hệ thống.</p>
+                ) : (
+                  rfidCandidates.map((demo) => (
+                    <button
+                      key={demo.userId}
+                      type="button"
+                      disabled={isScanning}
+                      onClick={() => handleSimulateScan(demo.userId, demo.fullName)}
+                      className="w-full p-2.5 rounded-xl border border-slate-200 hover:border-orange-500 hover:bg-orange-50/50 flex items-center justify-between text-left transition cursor-pointer"
+                    >
+                      <div>
+                        <div className="text-xs font-bold text-slate-900">{demo.fullName}</div>
+                        <div className="text-[10px] text-slate-500 font-mono">
+                          {demo.rfidCode || `SPORTHUB-MEMBER-${demo.userId}`} · {demo.activePackageName || 'Chưa có gói'}
+                        </div>
+                      </div>
+                      <span className="material-symbols-outlined text-orange-500 text-[18px]">contactless</span>
+                    </button>
+                  ))
+                )}
               </div>
             </div>
           </div>

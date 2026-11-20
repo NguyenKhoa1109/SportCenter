@@ -135,6 +135,8 @@ export function AppProvider({ children }) {
   const logout = () => {
     const token = authSession?.token;
     sessionStorage.removeItem(AUTH_SESSION_KEY);
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('tempUserEmail');
     setAuthSession(null);
     if (token) {
       apiRequest('/auth/session', { method: 'DELETE', authToken: token }).catch((error) => {
