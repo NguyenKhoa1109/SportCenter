@@ -1,4 +1,3 @@
-import React from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import TicketManagementPanel from '../../components/common/TicketManagementPanel';
 

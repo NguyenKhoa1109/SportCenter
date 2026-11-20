@@ -2,37 +2,6 @@
  * Utility functions for cleaning and normalizing Markdown text.
  */
 
-/**
- * Removes raw Markdown syntax (**, ##, ###, ---, *, etc.)
- * leaving clean, well-spaced plain text suitable for textareas or plain-text inputs.
- *
- * @param {string} text
- * @returns {string}
- */
-export function cleanMarkdownText(text) {
-  if (!text || typeof text !== 'string') return '';
-  return text
-    // Remove headers (# Heading -> Heading)
-    .replace(/^#{1,6}\s*(.+)$/gm, '$1')
-    // Remove horizontal rules (--- or *** or ___)
-    .replace(/^([-*]{3,}|_{3,})$/gm, '')
-    // Remove bold and bold-italic
-    .replace(/\*\*\*([^*]+?)\*\*\*/g, '$1')
-    .replace(/\*\*([^*]+?)\*\*/g, '$1')
-    .replace(/___([^_]+?)___/g, '$1')
-    .replace(/__([^_]+?)__/g, '$1')
-    // Remove italics (only if wrapped without outer spaces)
-    .replace(/(^|\s)\*([^*\s][^*]*?)\*($|\s)/g, '$1$2$3')
-    .replace(/(^|\s)_([^_\s][^_]*?)_($|\s)/g, '$1$2$3')
-    // Remove inline code
-    .replace(/`([^`]+?)`/g, '$1')
-    // Convert * or + bullet points to clean dash -
-    .replace(/^(\s*)[*+]\s+/gm, '$1- ')
-    // Normalize excessive blank lines (max 2 newlines)
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
 const METADATA_LINE_RE = /^(?:đối\s*tượng|hồ\s*sơ|chỉ\s*số|tên\s*lớp|lớp\s*học|lớp\s*đã\s*đăng\s*ký|thời\s*gian|ngày\s*(?:học|tập)|học\s*viên|họ\s*tên(?:\s*\/\s*cấp\s*độ)?|cấp\s*độ|huấn\s*luyện\s*viên|hlv|trình\s*độ|thể\s*trạng|sĩ\s*số|địa\s*điểm|phòng\s*tập|bộ\s*môn|chủ\s*đề|tổng\s*quan|giới\s*thiệu|mục\s*đích|lưu\s*ý\s*y\s*tế|thông\s*tin\s*hội\s*viên)(?=$|[:\s-])/i;
 const SECTION_PREFIX_RE = /^(?:phần\s*\d+|giai\s*đoạn\s*\d+|bước\s*\d+|[IVX]+\.)\s*[:\-–.]?\s*/i;
 const EXERCISE_BLOCK_HEADER_RE = /^(?:bài(?:\s*tập)?|exercise)\s*\d+\s*[:\-–.]\s*(.+)$/i;

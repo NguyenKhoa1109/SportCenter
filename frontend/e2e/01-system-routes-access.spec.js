@@ -24,7 +24,7 @@ function setupAudit(page, title) {
     async check(urlPath, name) {
       await page.goto(urlPath, { waitUntil: 'domcontentloaded' });
       await page.waitForTimeout(300);
-      expect(page.url()).toContain(urlPath.split('?')[0]);
+      expect(page.url(), `${title}: ${name}`).toContain(urlPath.split('?')[0]);
       await expect(page.locator('body')).toBeVisible();
     },
     getErrors() {
@@ -130,7 +130,7 @@ test.describe('SUITE 1: Kiểm Thử Toàn Bộ 59 Routes & Phân Quyền 5 Vai 
 
     await page.goto('/', { waitUntil: 'domcontentloaded' });
     await page.locator('header').getByRole('button', { name: /Menu tài khoản/i }).click();
-    const backToPortal = page.locator('header').getByRole('link', { name: /Về Portal/i });
+    const backToPortal = page.locator('header').getByRole('menuitem', { name: /Về Portal/i });
     await expect(backToPortal).toBeVisible();
     await backToPortal.click();
     await expect(page).toHaveURL(/\/receptionist$/);

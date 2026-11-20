@@ -71,7 +71,7 @@ public class MembershipService {
 
         // Kích hoạt gói
         membership.setStatus("ACTIVE");
-        
+
         // Set thời hạn
         LocalDate now = LocalDate.now();
         LocalDate start = now;
@@ -391,23 +391,6 @@ public class MembershipService {
     }
 
     /**
-     * Hoàn quota khi hủy booking
-     * held → remaining (hoàn lại)
-     */
-    @Transactional
-    public void releaseQuota(Long membershipId, int quotaAmount) {
-        UserMembership membership = lockMembership(membershipId);
-
-        if (quotaAmount <= 0 || membership.getHeldQuotaSessions() < quotaAmount) throw new ResponseStatusException(HttpStatus.CONFLICT, "Quota đang giữ không đủ.");
-        membership.setHeldQuotaSessions(membership.getHeldQuotaSessions() - quotaAmount);
-        if (isEffective(membership)) membership.setRemainingQuotaSessions(membership.getRemainingQuotaSessions() + quotaAmount);
-        else membership.setUsedQuotaSessions(membership.getUsedQuotaSessions() + quotaAmount);
-
-        validateQuotaFormula(membership);
-        userMembershipRepository.save(membership);
-    }
-
-    /**
      * Trừ quota thực sự khi check-in/điểm danh PRESENT
      * held → used (đã dùng)
      */
@@ -445,7 +428,7 @@ public class MembershipService {
 
         // Kiểm tra booking có trong thời hạn gói không
         boolean isWithinPeriod = isBookingWithinMembershipPeriod(membership, bookingStartTime);
-        
+
         if (isWithinPeriod) {
             // Booking trong thời hạn gói → Hoàn quota
             membership.setRemainingQuotaSessions(membership.getRemainingQuotaSessions() + quotaAmount);
@@ -457,7 +440,7 @@ public class MembershipService {
         validateQuotaFormula(membership);
         userMembershipRepository.save(membership);
     }
-    
+
     /**
      * Helper method: Kiểm tra booking có trong thời hạn membership không
      * 
@@ -470,64 +453,6 @@ public class MembershipService {
             return false;
         }
         return isEffective(membership) && !bookingStartTime.toLocalDate().isAfter(membership.getEndDate());
-    }
-
-    /**
-     * Hoàn quota từ used về remaining khi sửa điểm danh
-     * PRESENT/UNEXCUSED → EXCUSED_ABSENCE
-     * 
-     * Business Rule:
-     * - Booking TRONG thời hạn gói (startTime <= endDate): Hoàn quota (used → remaining)
-     * - Booking NGOÀI thời hạn gói (startTime > endDate): Giữ nguyên used (không hoàn, không thay đổi)
-     * 
-     * @param membershipId ID membership
-     * @param quotaAmount số quota (thường = 1)
-     * @param bookingStartTime thời gian bắt đầu của booking
-     */
-    @Transactional
-    public void refundUsedQuotaForExcusedAbsence(Long membershipId, int quotaAmount, LocalDateTime bookingStartTime) {
-        UserMembership membership = lockMembership(membershipId);
-
-        // Kiểm tra booking có trong thời hạn gói không
-        boolean isWithinPeriod = isBookingWithinMembershipPeriod(membership, bookingStartTime);
-        
-        if (isWithinPeriod) {
-            // Booking trong thời hạn → Hoàn quota
-            if (quotaAmount <= 0 || membership.getUsedQuotaSessions() < quotaAmount) throw new ResponseStatusException(HttpStatus.CONFLICT, "Quota đã dùng không đủ.");
-            membership.setUsedQuotaSessions(membership.getUsedQuotaSessions() - quotaAmount);
-            membership.setRemainingQuotaSessions(membership.getRemainingQuotaSessions() + quotaAmount);
-        }
-        // Nếu booking ngoài thời hạn: Không làm gì (used và remaining giữ nguyên, quota mất)
-
-        validateQuotaFormula(membership);
-        userMembershipRepository.save(membership);
-    }
-
-    /**
-     * Trừ quota từ remaining sang used khi sửa điểm danh
-     * EXCUSED_ABSENCE → PRESENT/UNEXCUSED_ABSENCE
-     * 
-     * Logic:
-     * - Kiểm tra remaining >= quotaAmount
-     * - remaining GIẢM
-     * - used TĂNG
-     * - held KHÔNG ĐỔI
-     */
-    @Transactional
-    public void consumeQuotaFromRemaining(Long membershipId, int quotaAmount) {
-        UserMembership membership = lockMembership(membershipId);
-
-        if (!isEffective(membership) || quotaAmount <= 0 || membership.getRemainingQuotaSessions() < quotaAmount) {
-            throw new ResponseStatusException(HttpStatus.BAD_REQUEST,
-                    String.format("⚠️ Không thể sửa điểm danh. Quota còn lại không đủ. Cần: %d, còn: %d",
-                            quotaAmount, membership.getRemainingQuotaSessions()));
-        }
-
-        membership.setRemainingQuotaSessions(membership.getRemainingQuotaSessions() - quotaAmount);
-        membership.setUsedQuotaSessions(membership.getUsedQuotaSessions() + quotaAmount);
-
-        validateQuotaFormula(membership);
-        userMembershipRepository.save(membership);
     }
 
     /**
@@ -555,17 +480,17 @@ public class MembershipService {
 
         // Hủy membership
         membership.setStatus("CANCELLED");
-        
+
         // Xóa hết quota - revoke all privileges
         membership.setRemainingQuotaSessions(0);
         membership.setHeldQuotaSessions(0);
         membership.setRemainingQuotaCourts(0);
         membership.setHeldQuotaCourts(0);
         // used giữ nguyên (đã dùng thì đã dùng)
-        
+
         // Hết hiệu lực ngay
         membership.setEndDate(LocalDate.now());
-        
+
         userMembershipRepository.save(membership);
 
         // Send notification

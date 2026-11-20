@@ -1,11 +1,11 @@
-export const ROLE_HOME_PATHS = {
+const ROLE_HOME_PATHS = {
   member: '/member',
   receptionist: '/receptionist',
   coach: '/coach',
   admin: '/admin',
 };
 
-export const ROLE_PROFILE_LINKS = {
+const ROLE_PROFILE_LINKS = {
   member: { label: 'Hồ sơ & Thẻ số cá nhân', path: '/member/profile', icon: 'account_circle' },
   coach: { label: 'Hồ sơ cá nhân', path: '/coach/profile', icon: 'account_circle' },
   receptionist: { label: 'Hồ sơ cá nhân', path: '/receptionist/profile', icon: 'account_circle' },

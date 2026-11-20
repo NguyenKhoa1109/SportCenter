@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
@@ -269,12 +269,12 @@ export default function VerifyCodePage() {
       {/* Main Container */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-10 my-4">
         <div className="w-full max-w-xl bg-white rounded-3xl border border-slate-200/90 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-          
+
           {/* Header Banner phong cách thể thao F Sport */}
           <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-6 sm:p-8 text-center relative overflow-hidden">
             <div className="absolute top-0 right-0 w-44 h-44 bg-orange-500/15 rounded-full blur-3xl pointer-events-none"></div>
             <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-orange-500/10 rounded-full blur-2xl pointer-events-none"></div>
-            
+
             <div className="w-16 h-16 mx-auto rounded-2xl bg-orange-500/20 border border-orange-500/40 text-orange-400 flex items-center justify-center shadow-lg mb-4">
               <span className="material-symbols-outlined text-3xl">sms</span>
             </div>
@@ -283,7 +283,7 @@ export default function VerifyCodePage() {
               <span className="material-symbols-outlined text-[14px]">timer</span>
               <span>Thời Gian Hiệu Lực: 10 Phút</span>
             </div>
-            
+
             <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
               Nhập Mã OTP Xác Nhận
             </h1>
@@ -325,7 +325,7 @@ export default function VerifyCodePage() {
 
           {/* Content */}
           <div className="p-6 sm:p-8 space-y-6">
-            
+
             {/* Email Identification Info Box - CỐ ĐỊNH */}
             <div className="bg-slate-50 border border-slate-200/90 rounded-2xl p-4 flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-orange-100 text-orange-600 flex items-center justify-center font-bold">
@@ -361,7 +361,7 @@ export default function VerifyCodePage() {
                 <label className="text-xs font-extrabold uppercase tracking-wider text-slate-700">
                   Nhập mã 6 chữ số
                 </label>
-                
+
                 <div className="flex items-center justify-center gap-2 sm:gap-3 w-full" onPaste={handlePaste}>
                   {otpDigits.map((digit, idx) => (
                     <input

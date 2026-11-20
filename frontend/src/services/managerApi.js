@@ -121,5 +121,3 @@ export const replyManagerTicket = (ticketId, data) =>
     method: 'POST',
     body: JSON.stringify(data),
   });
-
-

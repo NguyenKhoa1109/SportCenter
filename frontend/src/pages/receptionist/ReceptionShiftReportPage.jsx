@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ReceptionistLayout from '../../components/layouts/ReceptionistLayout';
 import { getReceptionistReport } from '../../services/receptionistApi';
 import { StatCardSkeleton } from '../../components/common/Skeleton';

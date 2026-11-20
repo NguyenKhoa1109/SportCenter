@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import MemberLayout from '../../components/layouts/MemberLayout';
 import {
   createMemberTicket,
@@ -45,14 +45,6 @@ const formatDate = (value) => {
   }
 };
 
-const formatRefCode = (refCode) => {
-  if (!refCode) return '#N/A';
-  if (refCode.startsWith('#')) return refCode;
-  if (/^\d+$/.test(refCode)) return `#${refCode}`;
-  if (refCode.includes('-') && refCode.length > 20) return `#${refCode.substring(0, 8)}`;
-  return `#${refCode}`;
-};
-
 const getItemTypeBadge = (itemType, paymentStatus, amount) => {
   if (paymentStatus === 'REFUNDED') {
     return { label: 'Hoàn Tiền 100%', color: 'bg-indigo-100 text-indigo-800 border-indigo-200', icon: 'currency_exchange' };
@@ -66,28 +58,6 @@ const getItemTypeBadge = (itemType, paymentStatus, amount) => {
     case 'COURT': return { label: 'Đặt Sân Bãi', color: 'bg-emerald-100 text-emerald-800 border-emerald-200', icon: 'sports_tennis' };
     case 'PT': return { label: 'Thuê HLV Riêng', color: 'bg-purple-100 text-purple-800 border-purple-200', icon: 'person_add_alt_1' };
     default: return { label: 'Dịch Vụ Khác', color: 'bg-slate-100 text-slate-800 border-slate-200', icon: 'receipt' };
-  }
-};
-
-const getItemTypeIcon = (itemType) => {
-  switch (itemType) {
-    case 'MEMBERSHIP': return '🎫';
-    case 'COURT': return '🏸';
-    case 'CLASS': return '📚';
-    case 'PT': return '💪';
-    case 'QUOTA': return '⭐';
-    default: return '📄';
-  }
-};
-
-const getItemTypeLabel = (itemType) => {
-  switch (itemType) {
-    case 'MEMBERSHIP': return 'Gói Hội Viên';
-    case 'COURT': return 'Đặt Sân';
-    case 'CLASS': return 'Lớp Học';
-    case 'PT': return 'Huấn Luyện Viên';
-    case 'QUOTA': return 'Khấu Trừ Quota';
-    default: return 'Dịch Vụ Khác';
   }
 };
 
@@ -116,12 +86,12 @@ export default function MemberTransactionsPage() {
   const [filterType, setFilterType] = useState('ALL'); // 'ALL' | 'MEMBERSHIP' | 'CLASS' | 'COURT' | 'REFUNDED' | 'QUOTA'
   const [currentPage, setCurrentPage] = useState(1);
   const TX_PER_PAGE = 8;
-  
+
   // Modal states
   const [selectedReceipt, setSelectedReceipt] = useState(null);
   const [showRefundModal, setShowRefundModal] = useState(false);
   const [showComplaintModal, setShowComplaintModal] = useState(false);
-  
+
   // Complaint modal form states
   const [complaintCategory, setComplaintCategory] = useState('ATTENDANCE_DISPUTE');
   const [complaintTitle, setComplaintTitle] = useState('');
@@ -238,11 +208,11 @@ export default function MemberTransactionsPage() {
         description: complaintDescription.trim(),
         severity: complaintSeverity,
       });
-      
+
       setComplaintTitle('');
       setComplaintDescription('');
       setShowComplaintModal(false);
-      
+
       showToast(
         'Khiếu nại đã gửi thành công',
         'Bộ phận CSKH và Quản lý F Sport sẽ phản hồi trong vòng 24h.',

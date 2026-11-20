@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useApp } from '../../context/AppContext';
 import { createManagerUser, getManagerDomainSports } from '../../services/managerApi';
 import { createReceptionistUser, getReceptionistDomainSports } from '../../services/receptionistApi';

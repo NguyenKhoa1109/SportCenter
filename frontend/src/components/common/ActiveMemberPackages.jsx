@@ -1,4 +1,3 @@
-import React from 'react';
 import { membershipDaysRemaining } from '../../utils/memberMemberships';
 
 const formatDate = (value) => value

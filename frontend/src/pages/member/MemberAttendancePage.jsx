@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
 import MemberLayout from '../../components/layouts/MemberLayout';
 import { getMemberAttendance, getMemberTickets, createMemberTicket } from '../../services/memberApi';
@@ -171,7 +171,7 @@ export default function MemberAttendancePage() {
         date: d.toLocaleDateString('vi-VN', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' }),
         time: d.toLocaleTimeString('vi-VN', { hour: '2-digit', minute: '2-digit' }),
       };
-    } catch (e) {
+    } catch {
       return { date: isoStr, time: '' };
     }
   };

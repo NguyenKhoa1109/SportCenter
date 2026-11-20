@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import ReceptionistLayout from '../../components/layouts/ReceptionistLayout';
 import { apiRequest, generatePayment } from '../../services/apiClient';
 import { redirectToPayment } from '../../services/paymentNavigation';
@@ -106,7 +106,7 @@ export default function ReceptionPOSPage() {
       if (paymentMethod === 'VNPAY' && result.paymentStatus === 'PENDING') {
         try {
           const vnpayResult = await generatePayment(result.paymentId, 'VNPAY');
-          
+
           // Redirect to VNPay payment page (same tab - giữ sessionStorage)
           // VNPay sẽ redirect về /payment/return sau khi thanh toán
           redirectToPayment(result.paymentId, vnpayResult.paymentUrl);
@@ -210,7 +210,7 @@ export default function ReceptionPOSPage() {
             </div>
           </section>
         )}
-        
+
         {receipt && !receipt.isVNPayPending && (
           <section role="status" className="rounded-2xl border border-emerald-200 bg-emerald-50/90 p-5 text-sm text-emerald-900 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-xs">
             <div className="flex items-center gap-3">

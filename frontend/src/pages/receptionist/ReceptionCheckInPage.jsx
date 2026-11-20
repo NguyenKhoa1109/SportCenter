@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import ReceptionistLayout from '../../components/layouts/ReceptionistLayout';
 import { apiRequest } from '../../services/apiClient';
@@ -179,7 +179,6 @@ export default function ReceptionCheckInPage() {
       setSubmitting(false);
     }
   };
-
 
   return (
     <ReceptionistLayout>

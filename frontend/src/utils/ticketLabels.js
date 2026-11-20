@@ -1,4 +1,4 @@
-export const TICKET_CATEGORIES = [
+const TICKET_CATEGORIES = [
   { value: 'ATTENDANCE_DISPUTE', label: 'Điểm danh sai / Vắng mặt' },
   { value: 'COACH_DISPUTE', label: 'Vấn đề Huấn luyện viên' },
   { value: 'FACILITY_ISSUE', label: 'Cơ sở vật chất / Sân bãi' },
@@ -11,7 +11,7 @@ export const TICKET_CATEGORIES = [
 export const getCategoryLabel = (category) =>
   TICKET_CATEGORIES.find((c) => c.value === category)?.label || category || 'Khác';
 
-export const TICKET_STATUS_META = {
+const TICKET_STATUS_META = {
   SUBMITTED: {
     label: 'Chờ tiếp nhận',
     badgeClass: 'bg-amber-100 text-amber-800 border-amber-200',
@@ -41,7 +41,7 @@ export const getTicketStatusMeta = (status) =>
     dotClass: 'bg-slate-500',
   };
 
-export const TICKET_SEVERITY_META = {
+const TICKET_SEVERITY_META = {
   URGENT: {
     label: 'Khẩn cấp',
     badgeClass: 'bg-rose-100 text-rose-800 border-rose-200',

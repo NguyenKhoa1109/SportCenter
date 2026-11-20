@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import { useState, useMemo } from 'react';
 import { apiRequest } from '../../services/apiClient';
 
 // Format functions inline (self-contained component)
@@ -72,7 +72,7 @@ export default function RefundRequestModal({
   // Group transactions by item type for better dropdown UX (OPTION 2 FIX)
   const groupedPaidTransactions = useMemo(() => {
     const groups = {};
-    
+
     paidTransactions.forEach((tx) => {
       const type = tx.itemType || 'OTHER';
       if (!groups[type]) {
@@ -80,7 +80,7 @@ export default function RefundRequestModal({
       }
       groups[type].push(tx);
     });
-    
+
     // Sort groups by priority: MEMBERSHIP > COURT > CLASS > PT > OTHER
     const sortOrder = ['MEMBERSHIP', 'COURT', 'CLASS', 'PT', 'OTHER'];
     const sorted = {};
@@ -89,14 +89,14 @@ export default function RefundRequestModal({
         sorted[type] = groups[type];
       }
     });
-    
+
     // Add any other types not in sortOrder
     Object.keys(groups).forEach(type => {
       if (!sorted[type]) {
         sorted[type] = groups[type];
       }
     });
-    
+
     return sorted;
   }, [paidTransactions]);
 
@@ -123,13 +123,13 @@ export default function RefundRequestModal({
           accountHolder,
         }),
       });
-      
+
       // Reset form
       setSelectedTxForRefund('');
       setRefundReason('');
       setBankAccount('');
       setAccountHolder('');
-      
+
       onClose();
       showToast(
         'Yêu cầu hoàn tiền đã gửi',
@@ -181,7 +181,7 @@ export default function RefundRequestModal({
               className="w-full px-3 py-2 rounded-xl border border-slate-300 text-xs font-bold bg-white outline-none focus:border-orange-500 focus:ring-0"
             >
               <option value="">-- Chọn giao dịch đã thanh toán --</option>
-              
+
               {/* Grouped by item type for better UX (OPTION 2 FIX) */}
               {Object.entries(groupedPaidTransactions).map(([type, items]) => (
                 <optgroup 

@@ -1,4 +1,3 @@
-import React from 'react';
 
 // Format functions inline (self-contained component)
 const formatVnd = (amount) =>

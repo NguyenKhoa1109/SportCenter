@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
@@ -140,12 +140,12 @@ export default function ResetPasswordPage() {
       {/* Main Container */}
       <main className="flex-1 flex items-center justify-center p-4 sm:p-6 lg:p-10 my-4">
         <div className="w-full max-w-xl bg-white rounded-3xl border border-slate-200/90 shadow-xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-          
+
           {/* Header Banner */}
           <div className="bg-gradient-to-r from-slate-950 via-slate-900 to-slate-950 text-white p-6 sm:p-8 text-center relative overflow-hidden">
             <div className="absolute top-0 right-0 w-44 h-44 bg-orange-500/15 rounded-full blur-3xl pointer-events-none"></div>
             <div className="absolute -bottom-10 -left-10 w-40 h-40 bg-orange-500/10 rounded-full blur-2xl pointer-events-none"></div>
-            
+
             <div className="w-16 h-16 mx-auto rounded-2xl bg-orange-500/20 border border-orange-500/40 text-orange-400 flex items-center justify-center shadow-lg mb-4">
               <span className="material-symbols-outlined text-3xl">key</span>
             </div>
@@ -154,7 +154,7 @@ export default function ResetPasswordPage() {
               <span className="material-symbols-outlined text-[14px]">verified_user</span>
               <span>Bước Cuối Cùng</span>
             </div>
-            
+
             <h1 className="text-2xl sm:text-3xl font-black uppercase tracking-tight text-white">
               Tạo Mật Khẩu Mới
             </h1>
@@ -196,7 +196,7 @@ export default function ResetPasswordPage() {
 
           {/* Body Content */}
           <div className="p-6 sm:p-8 space-y-6">
-            
+
             {/* Warning if no resetToken */}
             {!resetToken && (
               <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 text-amber-800 text-xs font-bold flex flex-col gap-2">

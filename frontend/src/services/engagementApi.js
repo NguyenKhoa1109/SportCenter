@@ -29,12 +29,7 @@ export const getMyCoachFeedbacks = () => apiRequest('/feedbacks/coach/me');
 export const sendBroadcast = (data) =>
   apiRequest('/manager/broadcast', { method: 'POST', body: JSON.stringify(data) });
 export const getAuditLogs = () => apiRequest('/manager/audit-logs');
-export const getManagerCourts = () => apiRequest('/manager/courts');
-export const updateCourtStatus = (id, active) =>
-  apiRequest(`/manager/courts/${encodeURIComponent(id)}/status`, {
-    method: 'PATCH',
-    body: JSON.stringify({ active }),
-  });
+
 export const getMaintenanceList = () => apiRequest('/manager/maintenance');
 export const createMaintenance = (data) =>
   apiRequest('/manager/maintenance', { method: 'POST', body: JSON.stringify(data) });

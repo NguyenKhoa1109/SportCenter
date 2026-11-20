@@ -1,5 +1,5 @@
 import { useNavigate } from 'react-router-dom';
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { CardGridSkeleton, TableSkeleton } from '../../components/common/Skeleton';
 import {
@@ -405,7 +405,6 @@ export default function AdminFacilitiesPage() {
             {error}
           </p>
         )}
-
 
         {/* Tab 1: Facilities List (Grouped by Sport) */}
         {activeTab === 'facilities' && (

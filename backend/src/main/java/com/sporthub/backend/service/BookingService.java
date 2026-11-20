@@ -36,7 +36,6 @@ import com.sporthub.backend.entity.Booking;
 import com.sporthub.backend.entity.ClassSession;
 import com.sporthub.backend.entity.CourtBooking;
 import com.sporthub.backend.entity.CourtMaintenance;
-import com.sporthub.backend.entity.MembershipPackage;
 import com.sporthub.backend.entity.PaymentTransaction;
 import com.sporthub.backend.entity.PublicFacility;
 import com.sporthub.backend.entity.PublicSport;
@@ -60,7 +59,7 @@ import com.sporthub.backend.repository.UserRepository;
 
 @Service
 public class BookingService {
-    
+
     private static final org.slf4j.Logger logger = org.slf4j.LoggerFactory.getLogger(BookingService.class);
 
     // ACTIVE_STATUSES: BOOKED (chờ thanh toán) + CONFIRMED (đã thanh toán) để đếm slot chính xác
@@ -113,7 +112,7 @@ public class BookingService {
         this(bookingRepository, classSessionRepository, userRepository, publicSportRepository,
                 publicFacilityRepository, sportsCourtRepository, courtBookingRepository,
                 courtMaintenanceRepository, paymentTransactionRepository, userMembershipRepository,
-                membershipPackageRepository, membershipService, auditLogService, null, null, null, null, null);
+                membershipPackageRepository, membershipService, auditLogService, null, null, null, null);
     }
 
     public BookingService(
@@ -134,51 +133,7 @@ public class BookingService {
         this(bookingRepository, classSessionRepository, userRepository, publicSportRepository,
                 publicFacilityRepository, sportsCourtRepository, courtBookingRepository,
                 courtMaintenanceRepository, paymentTransactionRepository, userMembershipRepository,
-                membershipPackageRepository, membershipService, auditLogService, paymentService, null, null, null, null);
-    }
-
-    public BookingService(
-            BookingRepository bookingRepository,
-            ClassSessionRepository classSessionRepository,
-            UserRepository userRepository,
-            PublicSportRepository publicSportRepository,
-            PublicFacilityRepository publicFacilityRepository,
-            SportsCourtRepository sportsCourtRepository,
-            CourtBookingRepository courtBookingRepository,
-            CourtMaintenanceRepository courtMaintenanceRepository,
-            PaymentTransactionRepository paymentTransactionRepository,
-            UserMembershipRepository userMembershipRepository,
-            MembershipPackageRepository membershipPackageRepository,
-            @Lazy MembershipService membershipService,
-            AuditLogService auditLogService,
-            com.sporthub.backend.repository.FacilityRepository facilityRepository) {
-        this(bookingRepository, classSessionRepository, userRepository, publicSportRepository,
-                publicFacilityRepository, sportsCourtRepository, courtBookingRepository,
-                courtMaintenanceRepository, paymentTransactionRepository, userMembershipRepository,
-                membershipPackageRepository, membershipService, auditLogService, null, facilityRepository, null, null, null);
-    }
-
-    public BookingService(
-            BookingRepository bookingRepository,
-            ClassSessionRepository classSessionRepository,
-            UserRepository userRepository,
-            PublicSportRepository publicSportRepository,
-            PublicFacilityRepository publicFacilityRepository,
-            SportsCourtRepository sportsCourtRepository,
-            CourtBookingRepository courtBookingRepository,
-            CourtMaintenanceRepository courtMaintenanceRepository,
-            PaymentTransactionRepository paymentTransactionRepository,
-            UserMembershipRepository userMembershipRepository,
-            MembershipPackageRepository membershipPackageRepository,
-            @Lazy MembershipService membershipService,
-            AuditLogService auditLogService,
-            PaymentService paymentService,
-            com.sporthub.backend.repository.FacilityRepository facilityRepository,
-            com.sporthub.backend.service.gateway.VNPayGateway vnpayGateway) {
-        this(bookingRepository, classSessionRepository, userRepository, publicSportRepository,
-                publicFacilityRepository, sportsCourtRepository, courtBookingRepository,
-                courtMaintenanceRepository, paymentTransactionRepository, userMembershipRepository,
-                membershipPackageRepository, membershipService, auditLogService, paymentService, facilityRepository, vnpayGateway, null, null);
+                membershipPackageRepository, membershipService, auditLogService, paymentService, null, null, null);
     }
 
     @org.springframework.beans.factory.annotation.Autowired
@@ -198,7 +153,6 @@ public class BookingService {
             AuditLogService auditLogService,
             @org.springframework.beans.factory.annotation.Autowired(required = false) PaymentService paymentService,
             @org.springframework.beans.factory.annotation.Autowired(required = false) com.sporthub.backend.repository.FacilityRepository facilityRepository,
-            @org.springframework.beans.factory.annotation.Autowired(required = false) com.sporthub.backend.service.gateway.VNPayGateway vnpayGateway,
             @org.springframework.beans.factory.annotation.Autowired(required = false) RefundRequestRepository refundRequestRepository,
             @org.springframework.beans.factory.annotation.Autowired(required = false) EngagementService engagementService) {
         this.bookingRepository = bookingRepository;
@@ -238,13 +192,13 @@ public class BookingService {
         }
         Map<Long, Booking> bookingsBySession = bookingRepository.findByMemberIdAndStatusIn(actorId, ALL_ACTIVE_STATUSES).stream()
                 .collect(Collectors.toMap(Booking::getSessionId, Function.identity(), (first, second) -> first));
-        
+
         // Query RefundRequests for this member
         Map<String, String> refundStatusMap = new java.util.HashMap<>();
         if (refundRequestRepository != null) {
             List<com.sporthub.backend.entity.RefundRequest> refundRequests = 
                 refundRequestRepository.findByMemberIdOrderByCreatedAtDesc(actorId);
-            
+
             for (com.sporthub.backend.entity.RefundRequest r : refundRequests) {
                 if (r.getBookingId() != null && ("CLASS".equalsIgnoreCase(r.getBookingType()) || "PT".equalsIgnoreCase(r.getBookingType()))) {
                     // Only map active refund states
@@ -254,7 +208,7 @@ public class BookingService {
                 }
             }
         }
-        
+
         Map<Long, String> coachNames = userRepository.findAllById(
                         sessions.stream().map(ClassSession::getCoachId).distinct().toList()).stream()
                 .collect(Collectors.toMap(User::getUserId, User::getFullName));
@@ -273,13 +227,13 @@ public class BookingService {
             Booking booking = bookingsBySession.get(session.getSessionId());
             String facStatus = facilityStatuses.get(session.getFacilityId());
             String effectiveStatus = ("MAINTENANCE".equalsIgnoreCase(facStatus)) ? "MAINTENANCE" : session.getStatus();
-            
+
             // Check refund status if booking exists
             String refundStatus = null;
             if (booking != null && booking.getBookingId() != null) {
                 refundStatus = refundStatusMap.get(String.valueOf(booking.getBookingId()));
             }
-            
+
             return new ClassSessionResponse(
                     session.getSessionId(),
                     session.getClassName(),
@@ -643,7 +597,7 @@ public class BookingService {
                 && !List.of("VNPAY", "CASH", "CASH_COUNTER").contains(request.paymentMethod().toUpperCase(Locale.ROOT)))
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Phương thức thanh toán không hợp lệ.");
         String bookingType = normalizeBookingType(request.bookingType());
-        
+
         // Migration 002: Check useQuota flag with auto-check logic
         if (Boolean.TRUE.equals(request.useQuota())) {
             // Route to quota-based checkout
@@ -655,7 +609,7 @@ public class BookingService {
             }
             return checkoutClassWithQuota(memberId, request);
         }
-        
+
         // Giữ nguyên logic cũ (trả phí) - Backward compatible
         if ("COURT".equals(bookingType)) {
             return checkoutCourt(memberId, request);
@@ -763,21 +717,21 @@ public class BookingService {
         if (!court.isActive()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Sân này đang trong lịch bảo trì, tạm thời không nhận đặt chỗ.");
         }
-        
+
         // 2. Validate time slot
         long hours = validateCourtSlot(court, request.startTime(), request.endTime());
-        
+
         // 3. Check maintenance schedule
         if (courtMaintenanceRepository.existsByCourtIdAndStartTimeLessThanAndEndTimeGreaterThan(court.getCourtId(), request.endTime(), request.startTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Sân này đang trong lịch bảo trì, không thể đặt chỗ.");
         }
-        
+
         // 4. BR-COURT-01: Check court availability (prevent double booking)
         if (courtBookingRepository.existsConfirmedOverlap(court.getCourtId(), request.startTime(), request.endTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, 
                 "Sân này đã được đặt trong khung giờ bạn chọn. Vui lòng chọn sân khác hoặc thời gian khác.");
         }
-        
+
         // 5. BR-COURT-02: Check member concurrent court limit (max 3 courts at same time)
         long memberConcurrentCourts = courtBookingRepository.countMemberConcurrentCourts(
             memberId, request.startTime(), request.endTime()
@@ -787,12 +741,12 @@ public class BookingService {
                 "Bạn đã đặt tối đa 3 sân trong cùng khung giờ này. " +
                 "Vui lòng chọn thời gian khác hoặc hủy một trong các sân đã đặt.");
         }
-        
+
         // 6. Check time conflicts with class bookings
         if (bookingRepository.existsOverlappingBookingForMember(memberId, ALL_ACTIVE_STATUSES, request.startTime(), request.endTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có lịch tham gia lớp học trong khung giờ này.");
         }
-        
+
         // 7. Check time conflicts with other court bookings
         if (courtBookingRepository.existsConfirmedOverlapForMember(memberId, request.startTime(), request.endTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có một lịch đặt sân khác trong khung giờ này.");
@@ -800,7 +754,7 @@ public class BookingService {
         PublicSport sport = getActiveSport(court.getSportId());
         BigDecimal baseAmount = court.getHourlyRate().multiply(BigDecimal.valueOf(hours));
         DiscountInfo discount = calculateDiscount(memberId, "COURT", baseAmount);
-        
+
         // Store court details for transaction history: "Sân Cầu Lông 01 (Thể Thao FPT)"
         String courtDescription = court.getCourtName() + " (" + sport.getName() + ")";
         PaymentTransaction payment = createRetailPayment(memberId, "COURT", courtDescription, discount.finalAmount(), request);
@@ -828,19 +782,19 @@ public class BookingService {
         ClassSession session = classSessionRepository.findByIdForUpdate(request.itemId())
                 .orElseThrow(() -> notFound("Không tìm thấy lớp học."));
         validateBookableClass(session);
-        
+
         // 2. Check duplicate booking for this member
         if (bookingRepository.existsByMemberIdAndSessionIdAndStatusIn(memberId, session.getSessionId(), ALL_ACTIVE_STATUSES)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã đặt chỗ hoặc đang trong hàng đợi lớp này.");
         }
-        
+
         // 3. BR-CLASS-01: Check slot availability with lock (prevent race condition)
         long currentBookedCount = bookingRepository.countActiveBookingsWithLock(session.getSessionId(), ACTIVE_STATUSES);
         if (currentBookedCount >= session.getMaxSlots()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, 
                 "Lớp học đã hết chỗ. Vui lòng chọn lớp khác hoặc thời gian khác.");
         }
-        
+
         // 4. Check time conflicts with other bookings
         if (bookingRepository.existsOverlappingBookingForMember(memberId, ALL_ACTIVE_STATUSES, session.getStartTime(), session.getEndTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có lịch tham gia lớp học khác trong khung giờ này.");
@@ -859,7 +813,7 @@ public class BookingService {
         }
         User coach = userRepository.findById(session.getCoachId())
                 .orElseThrow(() -> notFound("Không tìm thấy huấn luyện viên của lớp."));
-        
+
         // Store class details for transaction history: "Yoga Cơ Bản - HLV Nguyễn Văn A"
         String classDescription = session.getClassName() + " - HLV " + coach.getFullName();
         PaymentTransaction payment = createRetailPayment(memberId, "CLASS", classDescription, discount.finalAmount(), request);
@@ -896,19 +850,19 @@ public class BookingService {
         ClassSession session = classSessionRepository.findByIdForUpdate(request.itemId())
                 .orElseThrow(() -> notFound("Không tìm thấy lớp học."));
         validateBookableClass(session);
-        
+
         // 2. Check duplicate booking
         if (bookingRepository.existsByMemberIdAndSessionIdAndStatusIn(memberId, session.getSessionId(), ALL_ACTIVE_STATUSES)) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã đặt chỗ hoặc đang trong hàng đợi lớp này.");
         }
-        
+
         // 3. BR-CLASS-01: Check slot availability with lock (prevent race condition)
         long currentBookedCount = bookingRepository.countActiveBookingsWithLock(session.getSessionId(), ACTIVE_STATUSES);
         if (currentBookedCount >= session.getMaxSlots()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, 
                 "Lớp học đã hết chỗ. Vui lòng chọn lớp khác hoặc thời gian khác.");
         }
-        
+
         // 4. Check time conflicts
         if (bookingRepository.existsOverlappingBookingForMember(memberId, ALL_ACTIVE_STATUSES, session.getStartTime(), session.getEndTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có lịch tham gia lớp học khác trong khung giờ này.");
@@ -916,28 +870,28 @@ public class BookingService {
         if (courtBookingRepository.existsConfirmedOverlapForMember(memberId, session.getStartTime(), session.getEndTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Bạn đã có lịch đặt sân thi đấu trong khung giờ này.");
         }
-        
+
         // 5. Find membership with quota (Rule: remaining_quota_sessions >= 1)
         UserMembership membership = membershipService.getActiveMembershipWithQuota(memberId, 1, "CLASS", session.getSportId(), session.getStartTime(), session.getEndTime());
         if (membership == null) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                 "Không có gói membership còn quota. Vui lòng chọn thanh toán giá lẻ.");
         }
-        
+
         // 6. Hold quota (remaining → held)
         membershipService.requireBookingAccess(membership.getMembershipId(), session.getStartTime(), session.getEndTime());
         membershipService.holdQuota(membership.getMembershipId(), 1);
-        
+
         // 6.5. Create 0đ payment transaction for quota tracking & refund support
         PublicSport sport = getActiveSport(session.getSportId());
         PublicFacility facility = publicFacilityRepository.findById(session.getFacilityId())
                 .orElseThrow(() -> notFound("Không tìm thấy địa điểm lớp học."));
         User coach = userRepository.findById(session.getCoachId())
                 .orElseThrow(() -> notFound("Không tìm thấy huấn luyện viên."));
-        
+
         // Store class details for transaction history: "Yoga Cơ Bản - HLV Nguyễn Văn A"
         String classDescription = session.getClassName() + " - HLV " + coach.getFullName();
-        
+
         // Create payment transaction với amount=0, method=MEMBERSHIP_QUOTA
         PaymentTransaction payment = createPaymentTransaction(
             memberId, 
@@ -946,7 +900,7 @@ public class BookingService {
             BigDecimal.ZERO,  // amount = 0đ (dùng quota)
             "MEMBERSHIP_QUOTA"  // payment method
         );
-        
+
         // 7. Create booking with quota (now has payment_id for refund support)
         Booking booking = Booking.builder()
                 .memberId(memberId)
@@ -960,7 +914,7 @@ public class BookingService {
                 .paymentId(payment.getPaymentId())  // ✅ Now has payment for refund flow
                 .build();
         Booking saved = bookingRepository.save(booking);
-        
+
         // 8. Update booked slots
         session.setBookedSlots((int) bookingRepository.countBySessionIdAndStatusIn(session.getSessionId(), ACTIVE_STATUSES));
         classSessionRepository.save(session);
@@ -972,7 +926,7 @@ public class BookingService {
                         session.getClassName(), membership.getRemainingQuotaSessions()),
                 "BOOKING"
         );
-        
+
         // 9. Return response with quota info
         return new BookingConfirmationResponse(
                 "CLASS",
@@ -1035,14 +989,14 @@ public class BookingService {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                 "Không có gói membership còn quota. Vui lòng chọn thanh toán giá lẻ.");
         }
-        
+
         // 5. Hold quota (remaining → held)
         membershipService.requireBookingAccess(membership.getMembershipId(), start, end);
         membershipService.holdQuota(membership.getMembershipId(), 1);
 
         // 5.5. Create 0đ payment transaction for quota tracking
         String ptDescription = "Huấn Luyện 1-1 (" + coach.getFullName() + ")";
-        
+
         PaymentTransaction payment = createPaymentTransaction(
             memberId,
             "PT",
@@ -1128,8 +1082,7 @@ public class BookingService {
     }
 
     /**
-     * ✅ DEPRECATED: Use PaymentService.createPayment() instead
-     * Kept for backward compatibility if needed
+     * Create a retail payment and apply its voucher before checkout.
      */
     private PaymentTransaction createRetailPayment(Long memberId, String type, String description, BigDecimal amount, CheckoutRequest request) {
         PaymentTransaction payment = createPaymentTransaction(memberId, type, description, amount, request.paymentMethod());
@@ -1138,10 +1091,6 @@ public class BookingService {
             voucherService.apply(payment, request.voucherCode());
         }
         return payment;
-    }
-
-    private PaymentTransaction createPaymentTransaction(Long memberId, String bookingType, BigDecimal amount, String paymentMethod) {
-        return createPaymentTransaction(memberId, bookingType, null, amount, paymentMethod);
     }
 
     private PaymentTransaction createPaymentTransaction(Long memberId, String bookingType, String itemDescription, BigDecimal amount, String paymentMethod) {
@@ -1419,13 +1368,13 @@ public class BookingService {
     @Transactional
     public Booking updateAttendance(Long bookingId, Long actorId, String actorRole, String status, String coachNote) {
         String normalizedStatus = status == null ? "" : status.trim().toUpperCase(Locale.ROOT);
-        
+
         // Chấp nhận 4 trạng thái theo DATABASE.md Section 5.4
         if (!List.of("PRESENT", "EXCUSED_ABSENCE", "UNEXCUSED_ABSENCE", "ABSENT").contains(normalizedStatus)) {
             throw new ResponseStatusException(HttpStatus.BAD_REQUEST, 
                 "Trạng thái điểm danh phải là PRESENT, EXCUSED_ABSENCE, UNEXCUSED_ABSENCE hoặc ABSENT.");
         }
-        
+
         // Convert String to AttendanceStatus enum
         AttendanceStatus attendanceStatus;
         switch (normalizedStatus) {
@@ -1434,31 +1383,31 @@ public class BookingService {
             case "UNEXCUSED_ABSENCE", "ABSENT" -> attendanceStatus = AttendanceStatus.UNEXCUSED_ABSENCE;
             default -> throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Trạng thái không hợp lệ");
         }
-        
+
         Booking booking = bookingRepository.findByIdForUpdate(bookingId)
                 .orElseThrow(() -> notFound("Không tìm thấy thông tin đặt chỗ."));
         ClassSession session = classSessionRepository.findById(booking.getSessionId())
                 .orElseThrow(() -> notFound("Không tìm thấy lớp học liên quan."));
-        
+
         if (!List.of("COACH", "RECEPTIONIST", "MANAGER", "ADMIN").contains(actorRole)) throw new ResponseStatusException(HttpStatus.FORBIDDEN);
         if (!"CONFIRMED".equals(booking.getStatus()) || session.getStartTime() == null || session.getStartTime().isAfter(LocalDateTime.now())
                 || (booking.getPaymentId() != null && paymentTransactionRepository.findById(booking.getPaymentId()).filter(p -> "PAID".equals(p.getPaymentStatus())).isEmpty()))
             throw new ResponseStatusException(HttpStatus.CONFLICT, "Chỉ điểm danh buổi đã đến giờ và đã thanh toán.");
         // ✅ Lưu trạng thái cũ để check permission
         AttendanceStatus oldStatus = booking.getAttendanceStatus();
-        
+
         // ✅ Permission check: RECEPTIONIST chỉ được SỬA điểm danh, KHÔNG được TẠO lần đầu
         if ("RECEPTIONIST".equals(actorRole) && (oldStatus == null || oldStatus == AttendanceStatus.PENDING)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
                 "Lễ tân không được tạo điểm danh lần đầu. Chỉ Coach được điểm danh cho lớp/PT (BR-14).");
         }
-        
+
         // ✅ Permission check: COACH chỉ điểm danh lớp MÌNH phụ trách
         if ("COACH".equals(actorRole) && !session.getCoachId().equals(actorId)) {
             throw new ResponseStatusException(HttpStatus.FORBIDDEN, 
                 "Bạn không được phân công lớp học này.");
         }
-        
+
         // ✅ Validate: Booking phải ACTIVE
         if (!ACTIVE_STATUSES.contains(booking.getStatus().toUpperCase(Locale.ROOT))) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, 
@@ -1861,7 +1810,7 @@ public class BookingService {
         }
 
         LocalDateTime oldStart = courtBooking.getStartTime();
-        LocalDateTime oldEnd = courtBooking.getEndTime();
+
         Long oldCourtId = courtBooking.getCourtId();
 
         courtBooking.setCourtId(targetCourtId);
@@ -1902,30 +1851,30 @@ public class BookingService {
         // 1. Lock court to prevent concurrent modifications
         SportsCourt court = sportsCourtRepository.findByIdForUpdate(request.itemId())
                 .orElseThrow(() -> notFound("Không tìm thấy sân thể thao."));
-        
+
         if (!court.isActive()) {
             throw new ResponseStatusException(HttpStatus.CONFLICT, 
                 "Sân này đang trong lịch bảo trì, tạm thời không nhận đặt chỗ.");
         }
-        
+
         // 2. Validate time slot and calculate hours
         long hours = validateCourtSlot(court, request.startTime(), request.endTime());
         double exactHours = hours; // Use exact hours for quota
-        
+
         // 3. Check maintenance schedule
         if (courtMaintenanceRepository.existsByCourtIdAndStartTimeLessThanAndEndTimeGreaterThan(
                 court.getCourtId(), request.endTime(), request.startTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Sân đang trong lịch bảo trì tại thời điểm này.");
         }
-        
+
         // 4. Check existing overlapping bookings
         if (courtBookingRepository.existsConfirmedOverlap(
                 court.getCourtId(), request.startTime(), request.endTime())) {
             throw new ResponseStatusException(HttpStatus.CONFLICT,
                 "Khung giờ này đã có người đặt. Vui lòng chọn thời gian khác.");
         }
-        
+
         // 5. Get and validate membership with court quota
         UserMembership membership = membershipService.getActiveMembershipWithCourtQuota(memberId, exactHours, request.startTime(), request.endTime());
         if (membership == null || membership.getRemainingQuotaCourts() < exactHours) {
@@ -1935,7 +1884,7 @@ public class BookingService {
                     exactHours, 
                     membership != null ? membership.getRemainingQuotaCourts() : 0));
         }
-        
+
         // 6. Hold court quota
         membershipService.requireBookingAccess(membership.getMembershipId(), request.startTime(), request.endTime());
         membershipService.holdCourtQuota(membership.getMembershipId(), exactHours);
@@ -1966,9 +1915,9 @@ public class BookingService {
         booking.setMembershipId(membership.getMembershipId());
         booking.setQuotaHoursUsed(BigDecimal.valueOf(exactHours));
         booking.setCreatedAt(LocalDateTime.now());
-        
+
         CourtBooking savedBooking = courtBookingRepository.save(booking);
-        
+
         // 8. Log audit
         if (auditLogService != null) {
             auditLogService.logSuccess(
@@ -1979,11 +1928,11 @@ public class BookingService {
                     court.getCourtName(), exactHours, membership.getMembershipId(), exactHours)
             );
         }
-        
+
         // 9. Refresh membership to get updated quota
         UserMembership updatedMembership = userMembershipRepository.findById(membership.getMembershipId())
                 .orElse(membership);
-        
+
         // 10. Return confirmation
         String quotaMessage = String.format(Locale.US,
             "Đã dùng %.1f giờ court quota cho sân %s. Còn %d giờ.",
@@ -1996,7 +1945,7 @@ public class BookingService {
                 String.format("Bạn đã đặt %s. %s", court.getCourtName(), quotaMessage),
                 "BOOKING"
         );
-            
+
         return new BookingConfirmationResponse(
                 "COURT",
                 savedBooking.getCourtBookingId(),

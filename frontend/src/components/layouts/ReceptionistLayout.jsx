@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import PortalLayout from './PortalLayout';
 import { useApp } from '../../context/AppContext';
 import { apiRequest } from '../../services/apiClient';
@@ -6,7 +6,7 @@ import { apiRequest } from '../../services/apiClient';
 export default function ReceptionistLayout({ children }) {
   const { currentUser, showToast } = useApp();
   const [showRfidModal, setShowRfidModal] = useState(false);
-  const [rfidCode, setRfidCode] = useState('');
+
   const [isScanning, setIsScanning] = useState(false);
 
   const receptionistMenu = [
@@ -98,7 +98,7 @@ export default function ReceptionistLayout({ children }) {
         res.result === 'VALID' ? 'success' : 'warning'
       );
       setShowRfidModal(false);
-      setRfidCode('');
+
     } catch (err) {
       showToast('Lỗi quét thẻ', err.message || 'Không thể ghi nhận check-in RFID.', 'error');
     } finally {

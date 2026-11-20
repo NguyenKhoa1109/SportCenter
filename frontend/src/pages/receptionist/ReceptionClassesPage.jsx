@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useState } from 'react';
+import { useEffect, useId, useState } from 'react';
 import ReceptionistLayout from '../../components/layouts/ReceptionistLayout';
 import ModalDialog from '../../components/common/ModalDialog';
 import { CardGridSkeleton, TableSkeleton } from '../../components/common/Skeleton';

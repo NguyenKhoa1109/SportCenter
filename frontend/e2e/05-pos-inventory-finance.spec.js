@@ -1,5 +1,5 @@
 import { test, expect } from '@playwright/test';
-import { apiBaseUrl, loginReceptionist, loginManager, loginMember } from './helpers.js';
+import { loginReceptionist, loginManager, loginMember } from './helpers.js';
 
 test.describe('SUITE 5: Điểm Bán Hàng POS, Dụng Cụ Kho, Gói Tập & Tài Chính (POS, Inventory & Finance)', () => {
   test('1. POS bán hàng quầy lễ tân -> Bền vững sau F5 -> Đồng bộ tức thì sang Doanh thu Admin & Nhật ký Audit', async ({ browser, baseURL }) => {

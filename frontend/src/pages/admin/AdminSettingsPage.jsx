@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import AdminLayout from '../../components/layouts/AdminLayout';
 import { useApp } from '../../context/AppContext';
 import { getAuditLogs, getSystemSettings, updateSystemSettings } from '../../services/engagementApi';
@@ -123,7 +123,6 @@ export default function AdminSettingsPage() {
 
   const [auditFilter, setAuditFilter] = useState('ALL');
   const [auditSearch, setAuditSearch] = useState('');
-  const [loadingAudit, setLoadingAudit] = useState(false);
 
   // Load Policies & Permissions from Database (MGR-14 / MGR-02)
   useEffect(() => {
@@ -204,7 +203,7 @@ export default function AdminSettingsPage() {
   // Fetch real-time Audit Logs from DB via engagementApi (MGR-14)
   useEffect(() => {
     let active = true;
-    setLoadingAudit(true);
+
     getAuditLogs()
       .then((data) => {
         if (active && Array.isArray(data)) {
@@ -226,9 +225,6 @@ export default function AdminSettingsPage() {
       })
       .catch((err) => {
         console.warn('Không thể tải audit logs từ database:', err);
-      })
-      .finally(() => {
-        if (active) setLoadingAudit(false);
       });
 
     return () => {

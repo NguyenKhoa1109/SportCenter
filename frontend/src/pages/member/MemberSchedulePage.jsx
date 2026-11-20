@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import MemberLayout from '../../components/layouts/MemberLayout';
@@ -64,7 +64,7 @@ export default function MemberSchedulePage() {
 
   // Modals
   const [selectedCoach, setSelectedCoach] = useState(null);
-  const [coachLoading, setCoachLoading] = useState(false);
+
   const [cancelingBooking, setCancelingBooking] = useState(null);
   const [submittingCancel, setSubmittingCancel] = useState(false);
   const [statusMessage, setStatusMessage] = useState('');
@@ -120,14 +120,12 @@ export default function MemberSchedulePage() {
   // View Coach Profile
   const handleViewCoach = async (coachId) => {
     if (!coachId) return;
-    setCoachLoading(true);
+
     try {
       const coachProfile = await getCoachPublicProfile(coachId);
       setSelectedCoach(coachProfile);
     } catch (err) {
       showToast('Huấn luyện viên', err.message || 'Không thể tải hồ sơ huấn luyện viên.', 'warning');
-    } finally {
-      setCoachLoading(false);
     }
   };
 
@@ -138,7 +136,7 @@ export default function MemberSchedulePage() {
     setSubmittingCancel(true);
     try {
       const response = await cancelMemberBooking(target.bookingType, target.bookingId);
-      
+
       // Check response status
       if (response && response.status === 'PENDING_APPROVAL') {
         // LUỒNG 1: RefundRequest created, waiting for Manager approval

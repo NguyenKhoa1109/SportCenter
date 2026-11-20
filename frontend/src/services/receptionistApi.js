@@ -52,12 +52,6 @@ export const lookupReceptionCard = async (code) => {
   return { ...profile, checkInEligibility, todayBookings };
 };
 
-export const sellReceptionMembership = (saleData) =>
-  apiRequest('/receptionist/membership-sales', {
-    method: 'POST',
-    body: JSON.stringify(saleData),
-  });
-
 export const checkInReceptionMember = (data) =>
   apiRequest('/receptionist/check-ins', {
     method: 'POST',
@@ -113,4 +107,3 @@ export const cancelReceptionistClassBooking = (bookingId) =>
   apiRequest(`/receptionist/classes/bookings/${encodeURIComponent(bookingId)}`, {
     method: 'DELETE',
   });
-

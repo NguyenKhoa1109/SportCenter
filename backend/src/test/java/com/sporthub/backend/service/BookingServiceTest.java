@@ -93,7 +93,6 @@ class BookingServiceTest {
                 mock(AuditLogService.class),
                 paymentService,
                 null,
-                null,
                 mock(RefundRequestRepository.class),
                 engagementService);
     }

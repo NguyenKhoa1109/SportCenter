@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import ReceptionistLayout from '../../components/layouts/ReceptionistLayout';
 import CreateUserModal from '../../components/common/CreateUserModal';
 import QrCodeSvg from '../../components/common/QrCodeSvg';
@@ -81,7 +81,7 @@ export default function ReceptionMembersPage() {
         videoRef.current.play();
       }
       setCameraActive(true);
-    } catch (err) {
+    } catch {
       setCameraError('Không thể mở webcam hoặc quyền truy cập bị từ chối.');
     }
   };

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import Footer from '../components/Footer';
 import Navbar from '../components/Navbar';
@@ -63,7 +63,7 @@ export default function PublicContentPage({ contentType }) {
 
       <main className="w-full flex-1 pt-24 pb-20">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
+
           {/* Breadcrumb quay về */}
           <div className="mb-6 flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-500">
             <Link to="/" className="hover:text-orange-600 transition-colors">Trang chủ</Link>

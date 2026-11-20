@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import Footer from '../components/Footer';
 import Navbar from '../components/Navbar';
@@ -87,7 +87,7 @@ export default function PricingPage() {
 
       <main className="w-full flex-1 pt-20 pb-12">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          
+
           {/* Header Trang Bảng Giá */}
           <div className="text-center max-w-3xl mx-auto space-y-3 mb-8">
             <span className="inline-flex items-center gap-2 px-3.5 py-1 rounded-full bg-orange-50 border border-orange-200/80 text-orange-700 text-xs font-semibold">
@@ -209,7 +209,7 @@ export default function PricingPage() {
                         <p className={`text-xs font-bold uppercase tracking-wider ${isFeatured ? 'text-slate-300' : 'text-slate-500'}`}>
                           Đặc quyền bao gồm:
                         </p>
-                        
+
                         <div className="space-y-2 text-xs font-medium">
                           {pkg.description ? (
                             <p className={`leading-relaxed whitespace-pre-line ${isFeatured ? 'text-slate-300' : 'text-slate-600'}`}>

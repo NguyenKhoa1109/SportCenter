@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useApp } from '../context/AppContext';
 
@@ -158,12 +158,12 @@ export default function AuthPage() {
         let errorData = null;
         try {
           errorData = await response.json();
-        } catch (parseError) {
+        } catch {
           // Nếu không parse được JSON, dùng text response
           const errorText = await response.text();
           throw new Error(errorText || `Đăng nhập thất bại (${response.status})`);
         }
-        
+
         // Check nếu là lỗi PENDING_VERIFICATION
         if (errorData && errorData.error === 'PENDING_VERIFICATION') {
           setAuthNotice(errorData.message);
@@ -177,20 +177,20 @@ export default function AuthPage() {
           }, 2000);
           return;
         }
-        
+
         // Xử lý lỗi bình thường (user not found, wrong password, etc.)
         const errorMessage = errorData?.message || errorData?.error || 'Đăng nhập thất bại';
         throw new Error(errorMessage);
       }
-      
+
       const user = await response.json();
-      
+
       // ✅ CHECK requirePasswordChange flag (Staff cần đổi password lần đầu)
       if (user.requirePasswordChange === true) {
         // Lưu token tạm để /change-password dùng
         localStorage.setItem('authToken', user.token);
         localStorage.setItem('tempUserEmail', user.email);
-        
+
         navigate('/change-password', {
           state: {
             email: user.email,
@@ -201,10 +201,10 @@ export default function AuthPage() {
         });
         return;
       }
-      
+
       // Normal flow: authenticate user
       authenticate(user);
-      
+
     } catch (error) {
       setAuthError(getRequestErrorMessage(error, 'Đăng nhập'));
     } finally {
@@ -303,7 +303,7 @@ export default function AuthPage() {
     <div className="min-h-dvh lg:h-dvh bg-[#f7f9fb] font-body-md text-slate-800 antialiased selection:bg-orange-500 selection:text-white">
       <main className="w-full min-h-dvh lg:h-full">
         <div className="flex flex-col lg:flex-row w-full min-h-dvh lg:h-full">
-          
+
           {/* =========================================
               CỘT TRÁI (50% WIDTH, FULL HEIGHT ON DESKTOP)
              ========================================= */}
@@ -517,7 +517,6 @@ export default function AuthPage() {
                       </p>
                     )}
 
-
                     {/* Identifier */}
                     <div className="flex flex-col gap-1.5">
                       <label htmlFor="login-identifier" className="text-xs uppercase tracking-wider text-slate-700 font-extrabold">
@@ -634,7 +633,7 @@ export default function AuthPage() {
                         {authNotice}
                       </p>
                     )}
-                    
+
                     {/* NHÓM 1: THÔNG TIN CƠ BẢN */}
                     <div className="flex flex-col gap-2.5 [@media(min-height:840px)]:gap-3">
                       <div className="flex items-center justify-between">

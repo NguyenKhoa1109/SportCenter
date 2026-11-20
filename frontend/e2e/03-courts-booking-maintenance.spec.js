@@ -62,7 +62,7 @@ test.describe('SUITE 3: Cơ Sở Vật Chất, Đặt Sân & Khóa Bảo Trì (C
 
       const sportsRes = await memberPage.request.get(`${apiBaseUrl}/public/content/sports`);
       const sports = await sportsRes.json();
-      let chosenSport = null;
+
       let chosenSlot = null;
 
       for (const sport of sports) {
@@ -80,7 +80,6 @@ test.describe('SUITE 3: Cơ Sở Vật Chất, Đặt Sân & Khóa Bảo Trì (C
         });
 
         if (futureSlot) {
-          chosenSport = sport;
           chosenSlot = futureSlot;
           break;
         }
