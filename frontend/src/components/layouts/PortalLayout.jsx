@@ -59,8 +59,13 @@ const parseNotifications = (data) => {
   }));
 };
 
-const isMenuItemActive = (pathname, itemPath, role) =>
-  pathname === itemPath || (itemPath !== `/${role}` && pathname.startsWith(`${itemPath}/`));
+const getActiveMenuPath = (pathname, menuItems, role) => {
+  const matches = menuItems.filter(
+    (item) => pathname === item.path || (item.path !== `/${role}` && pathname.startsWith(`${item.path}/`)),
+  );
+  if (matches.length === 0) return null;
+  return matches.reduce((best, item) => (item.path.length > best.path.length ? item : best)).path;
+};
 
 export default function PortalLayout({
   role = 'member', // 'member' | 'receptionist' | 'coach' | 'admin'
@@ -263,8 +268,10 @@ export default function PortalLayout({
             )}
 
             <nav className="flex flex-col gap-1">
-              {menuItems.map((item, idx) => {
-                const isActive = isMenuItemActive(location.pathname, item.path, role);
+              {(() => {
+                const activeMenuPath = getActiveMenuPath(location.pathname, menuItems, role);
+                return menuItems.map((item, idx) => {
+                  const isActive = item.path === activeMenuPath;
                 const showSectionHeader =
                   Boolean(item.section) && (idx === 0 || item.section !== menuItems[idx - 1]?.section);
 
@@ -299,7 +306,8 @@ export default function PortalLayout({
                     </Link>
                   </React.Fragment>
                 );
-              })}
+              });
+              })()}
             </nav>
           </div>
         </div>
@@ -605,8 +613,10 @@ export default function PortalLayout({
           4. MOBILE BOTTOM NAVIGATION (Thanh điều hướng nhanh trên điện thoại)
          ========================================= */}
       <nav className="lg:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-xl border-t border-slate-200 px-2 py-1.5 flex items-center justify-around shadow-lg">
-        {mobileBottomItems.map((item) => {
-          const isActive = isMenuItemActive(location.pathname, item.path, role);
+        {(() => {
+          const activeMenuPath = getActiveMenuPath(location.pathname, menuItems, role);
+          return mobileBottomItems.map((item) => {
+            const isActive = item.path === activeMenuPath;
 
           return (
             <Link
@@ -630,7 +640,8 @@ export default function PortalLayout({
               </span>
             </Link>
           );
-        })}
+        });
+        })()}
 
         {/* More Menu on Mobile */}
         <button

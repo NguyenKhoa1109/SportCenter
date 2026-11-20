@@ -38,6 +38,9 @@ const STATUS_LABELS = {
   LOCKED: 'Đã khóa',
 };
 
+const ACTION_BTN_BASE =
+  'inline-flex h-8 w-full shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border px-1.5 text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40';
+
 const formatDate = (value) => {
   if (!value) return '—';
   return new Intl.DateTimeFormat('vi-VN', {
@@ -122,7 +125,7 @@ export default function AdminStaffPage() {
         'success'
       );
       setEditingCoach(null);
-      await loadUsers();
+      await loadUsers({ silent: true });
       if (performanceData) loadPerformance();
     } catch (err) {
       setEditSportError(err.message || 'Không thể cập nhật bộ môn của Huấn luyện viên.');
@@ -150,8 +153,10 @@ export default function AdminStaffPage() {
     }
   }, [activeTab, loadPerformance]);
 
-  const loadUsers = useCallback(async () => {
-    setLoading(true);
+  const loadUsers = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
     setError('');
     try {
       const params = new URLSearchParams({
@@ -166,7 +171,9 @@ export default function AdminStaffPage() {
     } catch (requestError) {
       setError(requestError.message || 'Không thể tải danh sách nhân sự.');
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [page, query, role]);
 
@@ -216,7 +223,7 @@ export default function AdminStaffPage() {
       });
       showToast('Thành công', `Đã cập nhật thông tin cho ${editForm.fullName.trim()}.`, 'success');
       setEditingStaff(null);
-      await loadUsers();
+      await loadUsers({ silent: true });
     } catch (err) {
       setEditStaffError(err.message || 'Không thể cập nhật thông tin nhân sự.');
     } finally {
@@ -235,7 +242,7 @@ export default function AdminStaffPage() {
         await lockManagerUser(user.userId);
         showToast('Đã khóa tài khoản', `Tài khoản ${user.fullName} đã bị khóa.`, 'success');
       }
-      await loadUsers();
+      await loadUsers({ silent: true });
     } catch (err) {
       showToast('Thao tác thất bại', err.message || 'Không thể thay đổi trạng thái tài khoản.', 'error');
     } finally {
@@ -250,7 +257,7 @@ export default function AdminStaffPage() {
       const res = await deleteManagerUser(deletingStaff.userId);
       showToast('Đã xóa nhân sự', res?.message || `Đã xóa tài khoản ${deletingStaff.fullName}.`, 'success');
       setDeletingStaff(null);
-      await loadUsers();
+      await loadUsers({ silent: true });
     } catch (err) {
       showToast('Không thể xóa', err.message || 'Không thể xóa tài khoản nhân sự.', 'error');
     } finally {
@@ -260,7 +267,7 @@ export default function AdminStaffPage() {
 
   useEffect(() => {
     loadUsers();
-    const handleWindowFocus = () => loadUsers();
+    const handleWindowFocus = () => loadUsers({ silent: true });
     window.addEventListener('focus', handleWindowFocus);
     return () => window.removeEventListener('focus', handleWindowFocus);
   }, [loadUsers]);
@@ -275,6 +282,19 @@ export default function AdminStaffPage() {
     setPage(0);
     setRole(event.target.value);
   };
+
+  const staffRows = usersPage.content || [];
+  const hasCoachRow = staffRows.some((u) => u.role?.toUpperCase() === 'COACH');
+  const hasManageableRow = staffRows.some(
+    (u) => !['MANAGER', 'ADMIN'].includes(u.role?.toUpperCase()),
+  );
+  const actionGridCols = [
+    hasCoachRow ? '4.5rem' : null,
+    '3.625rem',
+    hasManageableRow ? '5.25rem 3.625rem' : null,
+  ]
+    .filter(Boolean)
+    .join(' ');
 
   return (
     <AdminLayout>
@@ -301,7 +321,7 @@ export default function AdminStaffPage() {
             </button>
             <button
               type="button"
-              onClick={loadUsers}
+              onClick={() => loadUsers()}
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 shadow-sm cursor-pointer"
             >
@@ -396,32 +416,38 @@ export default function AdminStaffPage() {
             <>
               <div className="overflow-x-auto">
                 <table className="w-full min-w-[760px] text-left text-sm">
-                  <thead className="bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                  <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500 whitespace-nowrap">
                     <tr>
-                      <th className="px-5 py-3 font-semibold">Tài khoản</th>
-                      <th className="px-5 py-3 font-semibold">Vai trò &amp; Bộ môn</th>
-                      <th className="px-5 py-3 font-semibold">Số điện thoại</th>
-                      <th className="px-5 py-3 font-semibold">Trạng thái</th>
-                      <th className="px-5 py-3 font-semibold">Ngày tạo</th>
-                      <th className="px-5 py-3 font-semibold text-right">Thao tác</th>
+                      <th className="pl-4 pr-2 py-3 font-semibold">Tài khoản</th>
+                      <th className="px-2 py-3 font-semibold">Vai trò &amp; Bộ môn</th>
+                      <th className="px-2 py-3 font-semibold">Số điện thoại</th>
+                      <th className="px-2 py-3 font-semibold">Trạng thái</th>
+                      <th className="px-2 py-3 font-semibold">Ngày tạo</th>
+                      <th className="pl-2 pr-4 py-3 font-semibold text-center">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
                     {usersPage.content.map((user) => {
-                      const isCoach = user.role?.toUpperCase() === 'COACH';
+                      const normalizedRole = user.role?.toUpperCase();
+                      const normalizedStatus = user.status?.toUpperCase();
+                      const isCoach = normalizedRole === 'COACH';
+                      const isManageable = !['MANAGER', 'ADMIN'].includes(normalizedRole);
+                      const isLocked = normalizedStatus === 'LOCKED';
+                      const canToggleLock = ['ACTIVE', 'LOCKED'].includes(normalizedStatus);
+                      const isBusy = busyUserId === user.userId;
                       return (
                       <tr key={user.userId} className="hover:bg-slate-50/70">
-                        <td className="px-5 py-4">
+                        <td className="pl-4 pr-2 py-4">
                           <p className="font-semibold text-slate-900">{user.fullName}</p>
-                          <p className="mt-0.5 text-slate-500">{user.email}</p>
+                          <p className="mt-0.5 text-xs text-slate-500">{user.email}</p>
                           <p className="mt-0.5 text-xs text-slate-400">Mã tài khoản: {user.userId}</p>
                         </td>
-                        <td className="px-5 py-4 text-slate-700">
-                          <span className="font-medium block">
-                            {ROLE_LABELS[user.role?.toUpperCase() === 'ADMIN' ? 'MANAGER' : user.role?.toUpperCase()] || user.role}
+                        <td className="px-2 py-4 text-slate-700">
+                          <span className="font-medium block whitespace-nowrap">
+                            {ROLE_LABELS[normalizedRole === 'ADMIN' ? 'MANAGER' : normalizedRole] || user.role}
                           </span>
                           {isCoach && (
-                            <span className={`mt-1 inline-block rounded-md px-2 py-0.5 text-[11px] font-semibold ${
+                            <span className={`mt-1 inline-block max-w-[155px] rounded-md px-2 py-0.5 text-[11px] font-semibold ${
                               user.specialty
                                 ? 'bg-orange-50 text-orange-800 border border-orange-200'
                                 : 'bg-amber-50 text-amber-800 border border-amber-200'
@@ -430,62 +456,84 @@ export default function AdminStaffPage() {
                             </span>
                           )}
                         </td>
-                        <td className="px-5 py-4 text-slate-600">{user.phone || '—'}</td>
-                        <td className="px-5 py-4">
-                          <span className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            STATUS_STYLES[user.status?.toUpperCase()] || 'bg-slate-100 text-slate-700'
+                        <td className="px-2 py-4 text-xs text-slate-600 whitespace-nowrap tabular-nums">{user.phone || '—'}</td>
+                        <td className="px-2 py-4 whitespace-nowrap">
+                          <span className={`inline-flex items-center whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-bold ${
+                            STATUS_STYLES[normalizedStatus] || 'bg-slate-100 text-slate-700'
                           }`}>
-                            {STATUS_LABELS[user.status?.toUpperCase()] || user.status || 'Không rõ'}
+                            {STATUS_LABELS[normalizedStatus] || user.status || 'Không rõ'}
                           </span>
                         </td>
-                        <td className="px-5 py-4 text-slate-600">{formatDate(user.createdAt)}</td>
-                        <td className="px-5 py-4 text-right">
-                          <div className="inline-flex flex-wrap items-center justify-end gap-1.5">
-                            {isCoach && (
-                              <button
-                                type="button"
-                                onClick={() => openEditCoachSports(user)}
-                                className="inline-flex items-center gap-1 rounded-lg border border-orange-200 bg-orange-50 px-2.5 py-1.5 text-xs font-bold text-orange-700 hover:bg-orange-100 transition-colors cursor-pointer"
-                              >
-                                <span className="material-symbols-outlined text-[15px]">sports</span>
-                                Bộ môn
-                              </button>
+                        <td className="px-2 py-4 text-xs text-slate-600 max-w-[92px] tabular-nums">
+                          {formatDate(user.createdAt)}
+                        </td>
+                        <td className="pl-2 pr-4 py-4 text-right whitespace-nowrap">
+                          <div
+                            className="inline-grid items-center gap-1"
+                            style={{ gridTemplateColumns: actionGridCols }}
+                          >
+                            {hasCoachRow && (
+                              isCoach ? (
+                                <button
+                                  type="button"
+                                  disabled={isBusy}
+                                  onClick={() => openEditCoachSports(user)}
+                                  title="Gán bộ môn"
+                                  className={`${ACTION_BTN_BASE} border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100`}
+                                >
+                                  <span className="material-symbols-outlined text-[15px] leading-none">sports</span>
+                                  Bộ môn
+                                </button>
+                              ) : (
+                                <span aria-hidden="true" />
+                              )
                             )}
                             <button
                               type="button"
+                              disabled={isBusy}
                               onClick={() => openEditStaff(user)}
-                              className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer"
+                              title="Sửa thông tin"
+                              className={`${ACTION_BTN_BASE} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
                             >
-                              <span className="material-symbols-outlined text-[15px]">edit</span>
+                              <span className="material-symbols-outlined text-[15px] leading-none">edit</span>
                               Sửa
                             </button>
-                            {!['MANAGER', 'ADMIN'].includes(user.role?.toUpperCase()) && (
-                              <>
-                                <button
-                                  type="button"
-                                  disabled={busyUserId === user.userId || !['ACTIVE', 'LOCKED'].includes(user.status?.toUpperCase())}
-                                  onClick={() => handleToggleLock(user)}
-                                  className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
-                                    user.status?.toUpperCase() === 'LOCKED'
-                                      ? 'border-emerald-200 bg-emerald-50 text-emerald-700 hover:bg-emerald-100'
-                                      : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                                  }`}
-                                >
-                                  <span className="material-symbols-outlined text-[15px]">
-                                    {user.status?.toUpperCase() === 'LOCKED' ? 'lock_open' : 'lock'}
-                                  </span>
-                                  {user.status?.toUpperCase() === 'LOCKED' ? 'Mở khóa' : 'Khóa'}
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={busyUserId === user.userId}
-                                  onClick={() => setDeletingStaff(user)}
-                                  className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors cursor-pointer disabled:opacity-50"
-                                >
-                                  <span className="material-symbols-outlined text-[15px]">delete</span>
-                                  Xóa
-                                </button>
-                              </>
+                            {hasManageableRow && (
+                              isManageable ? (
+                                <>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy || !canToggleLock}
+                                    onClick={() => handleToggleLock(user)}
+                                    title={isLocked ? 'Mở khóa tài khoản' : 'Khóa tài khoản'}
+                                    className={`${ACTION_BTN_BASE} ${
+                                      isLocked
+                                        ? 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                        : 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
+                                    }`}
+                                  >
+                                    <span className="material-symbols-outlined text-[15px] leading-none">
+                                      {isBusy ? 'hourglass_top' : isLocked ? 'lock_open' : 'lock'}
+                                    </span>
+                                    {isLocked ? 'Mở khóa' : 'Khóa'}
+                                  </button>
+                                  <button
+                                    type="button"
+                                    disabled={isBusy}
+                                    onClick={() => setDeletingStaff(user)}
+                                    title="Xóa tài khoản"
+                                    className={`${ACTION_BTN_BASE} border-red-200 bg-red-50 text-red-700 hover:bg-red-100`}
+                                  >
+                                    <span className="material-symbols-outlined text-[15px] leading-none">delete</span>
+                                    Xóa
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <span aria-hidden="true" />
+                                  <span aria-hidden="true" />
+                                </>
+                              )
                             )}
                           </div>
                         </td>
@@ -732,7 +780,7 @@ export default function AdminStaffPage() {
       <CreateUserModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onSuccess={loadUsers}
+        onSuccess={() => loadUsers({ silent: true })}
         staffOnly
       />
 

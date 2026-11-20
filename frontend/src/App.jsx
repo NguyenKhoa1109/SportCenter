@@ -53,6 +53,7 @@ import AdminMembersPage from './pages/admin/AdminMembersPage';
 import AdminStaffPage from './pages/admin/AdminStaffPage';
 import AdminStaffApprovalsPage from './pages/admin/AdminStaffApprovalsPage';
 import AdminFacilitiesPage from './pages/admin/AdminFacilitiesPage';
+import AdminClassesPage from './pages/admin/AdminClassesPage';
 import AdminCreateClassPage from './pages/admin/AdminCreateClassPage';
 import AdminPackagesPage from './pages/admin/AdminPackagesPage';
 import AdminSettingsPage from './pages/admin/AdminSettingsPage';
@@ -172,6 +173,7 @@ function App() {
           <Route path="/admin/staff" element={<RequireRole role="admin"><AdminStaffPage /></RequireRole>} />
           <Route path="/admin/staff-approvals" element={<RequireRole role="admin"><AdminStaffApprovalsPage /></RequireRole>} />
           <Route path="/admin/facilities" element={<RequireRole role="admin"><AdminFacilitiesPage /></RequireRole>} />
+          <Route path="/admin/classes" element={<RequireRole role="admin"><AdminClassesPage /></RequireRole>} />
           <Route path="/admin/classes/new" element={<RequireRole role="admin"><AdminCreateClassPage /></RequireRole>} />
           <Route path="/admin/packages" element={<RequireRole role="admin"><AdminPackagesPage /></RequireRole>} />
           <Route path="/admin/settings" element={<RequireRole role="admin"><AdminSettingsPage /></RequireRole>} />

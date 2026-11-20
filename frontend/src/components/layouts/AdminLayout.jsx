@@ -38,6 +38,13 @@ export default function AdminLayout({ children, dashboardQuickAction }) {
       subtitle: 'Lịch đặt cụm sân Pickleball, Tennis, Bể bơi',
     },
     {
+      label: 'Quản lý lớp học',
+      path: '/admin/classes',
+      icon: 'calendar_month',
+      section: 'Vận hành & Cơ sở',
+      subtitle: 'Danh sách ca học nhóm theo bộ môn, dời giờ, đổi HLV và hủy ca',
+    },
+    {
       label: 'Tạo lịch lớp học',
       path: '/admin/classes/new',
       icon: 'event_available',

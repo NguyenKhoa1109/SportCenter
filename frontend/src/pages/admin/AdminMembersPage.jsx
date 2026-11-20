@@ -27,6 +27,9 @@ const STATUS_STYLES = {
   INACTIVE: 'bg-slate-100 text-slate-600 border-slate-200',
 };
 
+const ACTION_BTN_BASE =
+  'inline-flex h-8 w-full shrink-0 items-center justify-center gap-1 whitespace-nowrap rounded-lg border px-1.5 text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40';
+
 const formatDate = (value) => {
   if (!value) return '—';
   return new Intl.DateTimeFormat('vi-VN', {
@@ -57,8 +60,10 @@ export default function AdminMembersPage() {
   const [savingEdit, setSavingEdit] = useState(false);
   const [deletingMember, setDeletingMember] = useState(null);
 
-  const loadMembers = useCallback(async () => {
-    setLoading(true);
+  const loadMembers = useCallback(async ({ silent = false } = {}) => {
+    if (!silent) {
+      setLoading(true);
+    }
     setError('');
     try {
       const data = await getManagerMembers({
@@ -71,13 +76,15 @@ export default function AdminMembersPage() {
     } catch (requestError) {
       setError(requestError.message || 'Không thể tải danh sách hội viên.');
     } finally {
-      setLoading(false);
+      if (!silent) {
+        setLoading(false);
+      }
     }
   }, [filterStatus, page, query]);
 
   useEffect(() => {
     loadMembers();
-    const handleFocus = () => loadMembers();
+    const handleFocus = () => loadMembers({ silent: true });
     window.addEventListener('focus', handleFocus);
     return () => window.removeEventListener('focus', handleFocus);
   }, [loadMembers]);
@@ -104,7 +111,7 @@ export default function AdminMembersPage() {
       } else {
         return;
       }
-      await loadMembers();
+      await loadMembers({ silent: true });
     } catch (requestError) {
       setError(requestError.message || 'Không thể thay đổi trạng thái hội viên.');
     } finally {
@@ -135,7 +142,7 @@ export default function AdminMembersPage() {
       });
       showToast('Thành công', `Đã cập nhật thông tin hội viên ${editForm.fullName.trim()}.`, 'success');
       setEditingMember(null);
-      await loadMembers();
+      await loadMembers({ silent: true });
     } catch (err) {
       setEditError(err.message || 'Không thể cập nhật thông tin hội viên.');
     } finally {
@@ -150,7 +157,7 @@ export default function AdminMembersPage() {
       const res = await deleteManagerUser(deletingMember.userId);
       showToast('Đã xóa hội viên', res?.message || `Đã xóa tài khoản ${deletingMember.fullName}.`, 'success');
       setDeletingMember(null);
-      await loadMembers();
+      await loadMembers({ silent: true });
     } catch (err) {
       showToast('Không thể xóa', err.message || 'Không thể xóa tài khoản hội viên.', 'error');
     } finally {
@@ -183,7 +190,7 @@ export default function AdminMembersPage() {
             </button>
             <button
               type="button"
-              onClick={loadMembers}
+              onClick={() => loadMembers()}
               disabled={loading}
               className="inline-flex items-center justify-center gap-2 self-start rounded-xl border border-slate-300 bg-white px-4 py-2.5 text-xs font-bold text-slate-700 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60 sm:self-auto shadow-sm cursor-pointer"
             >
@@ -252,12 +259,12 @@ export default function AdminMembersPage() {
                 <table className="w-full min-w-[760px] text-left text-sm">
                   <thead className="border-b border-slate-200 bg-slate-50 text-[11px] font-bold uppercase tracking-wider text-slate-500 whitespace-nowrap">
                     <tr>
-                      <th className="px-5 py-3">Mã HV</th>
-                      <th className="px-5 py-3">Họ và tên</th>
-                      <th className="px-5 py-3">Liên hệ</th>
-                      <th className="px-5 py-3">Ngày tạo tài khoản</th>
-                      <th className="px-5 py-3">Trạng thái tài khoản</th>
-                      <th className="px-5 py-3 text-center">Thao tác</th>
+                      <th className="pl-4 pr-2 py-3">Mã HV</th>
+                      <th className="px-2 py-3">Họ và tên</th>
+                      <th className="px-2 py-3">Liên hệ</th>
+                      <th className="px-2 py-3">Ngày tạo tài khoản</th>
+                      <th className="px-2 py-3">Trạng thái tài khoản</th>
+                      <th className="pl-2 pr-4 py-3 text-center">Thao tác</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -267,45 +274,45 @@ export default function AdminMembersPage() {
                       const isProcessing = processingId === member.userId;
                       return (
                         <tr key={member.userId} className="transition-colors hover:bg-slate-50/70">
-                          <td className="px-5 py-4 font-mono font-bold text-slate-800 whitespace-nowrap">#{member.userId}</td>
-                          <td className="px-5 py-4 font-bold text-slate-900 whitespace-nowrap">{member.fullName}</td>
-                          <td className="px-5 py-4">
+                          <td className="pl-4 pr-2 py-4 font-mono font-bold text-slate-800 whitespace-nowrap">#{member.userId}</td>
+                          <td className="px-2 py-4 font-bold text-slate-900 whitespace-nowrap">{member.fullName}</td>
+                          <td className="px-2 py-4">
                             <div className="text-slate-800 whitespace-nowrap">{member.phone || '—'}</div>
                             <div className="mt-0.5 text-xs text-slate-400">{member.email}</div>
                           </td>
-                          <td className="px-5 py-4 text-slate-600 whitespace-nowrap">{formatDate(member.createdAt)}</td>
-                          <td className="px-5 py-4 whitespace-nowrap">
+                          <td className="px-2 py-4 text-slate-600 whitespace-nowrap">{formatDate(member.createdAt)}</td>
+                          <td className="px-2 py-4 whitespace-nowrap">
                             <span className={`inline-flex rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase whitespace-nowrap ${
                               STATUS_STYLES[status] || STATUS_STYLES.INACTIVE
                             }`}>
                               {STATUS_LABELS[status] || member.status || 'Không rõ'}
                             </span>
                           </td>
-                          <td className="px-5 py-4 text-center">
-                            <div className="inline-flex items-center justify-center gap-1.5">
+                          <td className="pl-2 pr-4 py-4 text-center">
+                            <div className="inline-grid grid-cols-[3.625rem_5.25rem_3.625rem] items-center gap-1.5">
                               <button
                                 type="button"
                                 onClick={() => openEditMember(member)}
                                 disabled={isProcessing}
-                                className="inline-flex items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 py-1.5 text-xs font-bold text-slate-700 hover:bg-slate-50 transition-colors cursor-pointer disabled:opacity-40"
+                                className={`${ACTION_BTN_BASE} border-slate-200 bg-white text-slate-700 hover:bg-slate-50`}
                                 title="Sửa thông tin"
                               >
-                                <span className="material-symbols-outlined text-[15px]">edit</span>
+                                <span className="material-symbols-outlined text-[15px] leading-none">edit</span>
                                 Sửa
                               </button>
                               <button
                                 type="button"
                                 onClick={() => toggleMemberStatus(member)}
                                 disabled={!canToggle || isProcessing}
-                                className={`inline-flex items-center gap-1 rounded-lg border px-2.5 py-1.5 text-xs font-bold transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40 ${
+                                className={`${ACTION_BTN_BASE} ${
                                   status === 'ACTIVE'
                                     ? 'border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100'
-                                    : 'border-emerald-300 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
+                                    : 'border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100'
                                 }`}
                                 title={status === 'ACTIVE' ? 'Khóa tài khoản' : 'Mở khóa tài khoản'}
                                 aria-label={status === 'ACTIVE' ? `Khóa ${member.fullName}` : `Mở khóa ${member.fullName}`}
                               >
-                                <span className="material-symbols-outlined text-[15px]">
+                                <span className="material-symbols-outlined text-[15px] leading-none">
                                   {isProcessing ? 'hourglass_top' : status === 'ACTIVE' ? 'lock' : 'lock_open'}
                                 </span>
                                 {status === 'ACTIVE' ? 'Khóa' : 'Mở khóa'}
@@ -314,10 +321,10 @@ export default function AdminMembersPage() {
                                 type="button"
                                 onClick={() => setDeletingMember(member)}
                                 disabled={isProcessing || status === 'INACTIVE'}
-                                className="inline-flex items-center gap-1 rounded-lg border border-red-200 bg-red-50 px-2.5 py-1.5 text-xs font-bold text-red-700 hover:bg-red-100 transition-colors cursor-pointer disabled:cursor-not-allowed disabled:opacity-40"
+                                className={`${ACTION_BTN_BASE} border-red-200 bg-red-50 text-red-700 hover:bg-red-100`}
                                 title="Xóa tài khoản"
                               >
-                                <span className="material-symbols-outlined text-[15px]">delete</span>
+                                <span className="material-symbols-outlined text-[15px] leading-none">delete</span>
                                 Xóa
                               </button>
                             </div>
@@ -347,7 +354,7 @@ export default function AdminMembersPage() {
       <CreateUserModal
         isOpen={isCreateOpen}
         onClose={() => setIsCreateOpen(false)}
-        onSuccess={loadMembers}
+        onSuccess={() => loadMembers({ silent: true })}
         memberOnly
       />
 

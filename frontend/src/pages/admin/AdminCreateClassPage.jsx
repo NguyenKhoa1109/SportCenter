@@ -99,7 +99,7 @@ export default function AdminCreateClassPage() {
             <h1 className="text-2xl font-bold text-slate-900">Tạo lịch lớp học</h1>
             <p className="mt-2 text-sm text-slate-500">Chọn bộ môn, sân và huấn luyện viên, sau đó thiết lập thời gian và học phí mỗi buổi.</p>
           </div>
-          <Link to="/admin/facilities" className="text-sm font-semibold text-orange-700">Xem lịch lớp đã tạo →</Link>
+          <Link to="/admin/classes" className="text-sm font-semibold text-orange-700">Xem lịch lớp đã tạo →</Link>
         </header>
         {error && <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">{error}</p>}
         {success && <p role="status" className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800">{success}</p>}
